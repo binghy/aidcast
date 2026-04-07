@@ -1,0 +1,17 @@
+{
+  "accountAssociation": {
+    "header": "test",
+    "payload": "test",
+    "signature": "test"
+  },
+  "miniapp": {
+    "version": "1",
+    "name": "AIdCast",
+    "homeUrl": "https://example.com",
+    "iconUrl": "https://example.com/icon.png",
+    "imageUrl": "https://example.com/og-image.png",
+    "buttonTitle": "Open AIdCast",
+    "splashImageUrl": "https://example.com/splash.png",
+    "splashBackgroundColor": "#ffffff"
+  }
+}

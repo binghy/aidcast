@@ -1,3 +1,6 @@
+AIdCaster
+A social AI mini app that connects needs with support in real time on Farcaster
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started

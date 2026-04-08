@@ -8,6 +8,10 @@ import Card from "@/components/Card";
 
 type Entry = {
   id: number;
+  fid: number | null;
+  username: string | null;
+  display_name: string | null;
+  pfp_url: string | null;
   type: "request" | "offer";
   raw_text: string;
   category: string | null;

@@ -28,6 +28,11 @@ export default function SubmitPage() {
       return;
     }
 
+     if (!context?.user?.fid) {
+        setMessage("Open AIdCast inside Farcaster to submit authenticated requests and offers.");
+        return;
+     }
+
     try {
       setLoading(true);
       setMessage("");
@@ -45,6 +50,8 @@ export default function SubmitPage() {
       }
 
       const analysis = (await analyzeRes.json()) as AnalysisResult;
+      console.log("Mini app context user:", context?.user);
+      console.log("About to call sdk.quickAuth.fetch");
 
       const saveRes = await sdk.quickAuth.fetch("/api/entries", {
         method: "POST",
@@ -77,8 +84,10 @@ export default function SubmitPage() {
       setSupportMode("online");
       setLocationText("");
     } catch (err) {
-      console.error(err);
-      setMessage("Unexpected error while saving entry.");
+    console.error("Submit error:", err);
+    setMessage(
+        err instanceof Error ? err.message : "Unexpected error while saving entry."
+    );
     } finally {
       setLoading(false);
     }

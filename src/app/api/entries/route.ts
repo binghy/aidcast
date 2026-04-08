@@ -10,6 +10,8 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 export async function POST(req: NextRequest) {
   try {
     const authorization = req.headers.get("authorization");
+    console.log("Authorization header present:", !!authorization);
+    console.log("Authorization header prefix:", authorization?.slice(0, 20));
 
     if (!authorization || !authorization.startsWith("Bearer ")) {
       return NextResponse.json(
@@ -25,7 +27,11 @@ export async function POST(req: NextRequest) {
       domain: "aidcast.vercel.app",
     });
 
+    console.log("Verified Quick Auth payload:", payload);
+
     const fid = Number(payload.sub);
+
+    console.log("Resolved fid:", fid);
 
     const body = await req.json();
 

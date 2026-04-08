@@ -2,6 +2,10 @@ import { supabase } from "./supabase";
 
 type Entry = {
   id: number;
+  fid: number | null;
+  username: string | null;
+  display_name: string | null;
+  pfp_url: string | null;
   type: "request" | "offer";
   raw_text: string;
   category: string | null;
@@ -20,9 +24,31 @@ export type ScoredMatch = Entry & {
 };
 
 const STOPWORDS = new Set([
-  "i", "can", "help", "the", "a", "an", "to", "from", "with", "and", "or",
-  "for", "of", "in", "on", "at", "by", "is", "are", "this", "that", "it",
-  "be", "as", "into",
+  "i",
+  "can",
+  "help",
+  "the",
+  "a",
+  "an",
+  "to",
+  "from",
+  "with",
+  "and",
+  "or",
+  "for",
+  "of",
+  "in",
+  "on",
+  "at",
+  "by",
+  "is",
+  "are",
+  "this",
+  "that",
+  "it",
+  "be",
+  "as",
+  "into",
 ]);
 
 function normalizeText(text: string) {
@@ -85,8 +111,10 @@ function getLocationBoost(request: Entry, offer: Entry) {
   const requestMode = request.support_mode || "online";
   const offerMode = offer.support_mode || "online";
 
-  const requestNeedsLocation = requestMode === "in_person" || requestMode === "both";
-  const offerNeedsLocation = offerMode === "in_person" || offerMode === "both";
+  const requestNeedsLocation =
+    requestMode === "in_person" || requestMode === "both";
+  const offerNeedsLocation =
+    offerMode === "in_person" || offerMode === "both";
 
   if (!requestNeedsLocation && !offerNeedsLocation) {
     return { boost: 0, reason: null as string | null };
@@ -126,6 +154,10 @@ async function evaluateMatchWithLLM(
   }
 }
 
+function shouldDisableSelfMatch() {
+  return process.env.NEXT_PUBLIC_DISABLE_SELF_MATCH === "true";
+}
+
 export async function findMatchesForRequest(
   request: Entry,
   limit = 3
@@ -145,11 +177,20 @@ export async function findMatchesForRequest(
   }
 
   const offers = (data || []) as Entry[];
+  const disableSelfMatch = shouldDisableSelfMatch();
+
+  const filteredByOwnership = offers.filter((offer) => {
+    if (!disableSelfMatch) return true;
+
+    if (!request.fid || !offer.fid) return true;
+
+    return offer.fid !== request.fid;
+  });
 
   const seen = new Set<string>();
   const deduped: Entry[] = [];
 
-  for (const offer of offers) {
+  for (const offer of filteredByOwnership) {
     const fingerprint = normalizeText(offer.summary || offer.raw_text || "");
     if (!fingerprint) continue;
 
@@ -202,11 +243,12 @@ export async function findMatchesForRequest(
     const candidateMode = candidate.support_mode || "online";
 
     if (
-    request.category === "physical_goods" &&
-    (requestMode === "online" || candidateMode === "online")
+      request.category === "physical_goods" &&
+      (requestMode === "online" || candidateMode === "online")
     ) {
-    continue;
+      continue;
     }
+
     const llmResult = await evaluateMatchWithLLM(
       request.summary || request.raw_text,
       candidate.summary || candidate.raw_text

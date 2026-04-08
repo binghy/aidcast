@@ -1,6 +1,9 @@
+"use client";
 import type { Metadata } from "next";
 import Link from "next/link";
 import Card from "@/components/Card";
+import { sdk } from "@farcaster/miniapp-sdk";
+import { useState } from "react";
 
 export const metadata: Metadata = {
   title: "AIdCast",
@@ -31,6 +34,18 @@ export const metadata: Metadata = {
 };
 
 export default function Home() {
+  const [addMessage, setAddMessage] = useState("");
+
+  const handleAddMiniApp = async () => {
+    try {
+      await sdk.actions.addMiniApp();
+      setAddMessage("AIdCast added successfully. Notifications should now be available.");
+    } catch (error) {
+      console.error("addMiniApp failed:", error);
+      setAddMessage("Could not add the app from this context.");
+    }
+  };
+
   return (
     <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-blue-100 via-white to-violet-100 px-4 py-6">
       <div className="pointer-events-none absolute inset-0 opacity-10 bg-[url('/og-image.png')] bg-cover bg-center" />
@@ -80,7 +95,21 @@ export default function Home() {
           >
             View Community Board
           </a>
+
+          <button
+            type="button"
+            onClick={handleAddMiniApp}
+            className="inline-flex items-center justify-center rounded-2xl border border-zinc-300 bg-white/90 px-4 py-3 text-sm font-medium text-zinc-900 transition hover:bg-white"
+          >
+            Enable notifications
+          </button>
         </div>
+
+        {addMessage && (
+          <Card className="p-4">
+            <p className="text-sm text-zinc-700">{addMessage}</p>
+          </Card>
+        )}
       </div>
     </main>
   );

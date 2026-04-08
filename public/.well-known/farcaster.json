@@ -12,6 +12,7 @@
     "imageUrl": "https://aidcast.vercel.app/og-image.png",
     "buttonTitle": "Open AIdCast",
     "splashImageUrl": "https://aidcast.vercel.app/splash.png",
-    "splashBackgroundColor": "#ffffff"
+    "splashBackgroundColor": "#ffffff",
+    "webhookUrl": "https://aidcast.vercel.app/api/webhook"
   }
 }

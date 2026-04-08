@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { sdk } from "@farcaster/miniapp-sdk";
+import { useMiniApp } from "@neynar/react";
 import Card from "@/components/Card";
 
 type AnalysisResult = {
@@ -12,6 +13,8 @@ type AnalysisResult = {
 };
 
 export default function SubmitPage() {
+  const { context } = useMiniApp();
+
   const [text, setText] = useState("");
   const [type, setType] = useState<"request" | "offer">("request");
   const [supportMode, setSupportMode] = useState<"online" | "in_person" | "both">("online");
@@ -43,8 +46,12 @@ export default function SubmitPage() {
 
       const analysis = (await analyzeRes.json()) as AnalysisResult;
 
-      const { error } = await supabase.from("entries").insert([
-        {
+      const saveRes = await sdk.quickAuth.fetch("/api/entries", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
           type,
           raw_text: text.trim(),
           category: analysis.category,
@@ -53,12 +60,15 @@ export default function SubmitPage() {
           status: "open",
           support_mode: supportMode,
           location_text: locationText.trim() || null,
-        },
-      ]);
+          username: context?.user?.username || null,
+          display_name: context?.user?.displayName || null,
+          pfp_url: context?.user?.pfpUrl || null,
+        }),
+      });
 
-      if (error) {
-        setMessage(`Error saving entry: ${error.message}`);
-        return;
+      if (!saveRes.ok) {
+        const err = await saveRes.json().catch(() => null);
+        throw new Error(err?.error || "Failed to save entry");
       }
 
       setMessage(`Saved successfully with ${analysis.source.toUpperCase()} analysis.`);
@@ -74,23 +84,23 @@ export default function SubmitPage() {
     }
   };
 
-return (
-  <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-blue-50 via-white to-violet-50 px-4 py-6">
-    <div className="pointer-events-none absolute inset-0 opacity-5 bg-[url('/splash.png')] bg-cover bg-center" />
-    <div className="relative mx-auto max-w-md">
+  return (
+    <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-blue-50 via-white to-violet-50 px-4 py-6">
+      <div className="pointer-events-none absolute inset-0 opacity-5 bg-[url('/splash.png')] bg-cover bg-center" />
+      <div className="relative mx-auto max-w-md">
         <div className="mb-5">
-        <div className="mb-2">
+          <div className="mb-2">
             <a href="/" className="text-sm text-zinc-500 hover:text-zinc-800">
-            ← Back home
+              ← Back home
             </a>
-        </div>
+          </div>
 
-        <h1 className="text-center text-3xl font-bold tracking-tight text-zinc-900">
+          <h1 className="text-center text-3xl font-bold tracking-tight text-zinc-900">
             Submit
-        </h1>
-        <p className="mt-2 text-center text-sm text-zinc-600">
+          </h1>
+          <p className="mt-2 text-center text-sm text-zinc-600">
             Create a request if you need help, or an offer if you can support someone.
-        </p>
+          </p>
         </div>
 
         <Card className="p-5 shadow-xl">

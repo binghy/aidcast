@@ -1,17 +1,17 @@
 {
   "accountAssociation": {
-    "header": "test",
-    "payload": "test",
-    "signature": "test"
+    "header": "eyJmaWQiOjMxOTIyMjIsInR5cGUiOiJhdXRoIiwia2V5IjoiMHhBMUZDOTIxZjVmOGMyNDk5NjRkZDU3OGM0ZmRjMTg3N2FkNTM5MTQzIn0",
+    "payload": "eyJkb21haW4iOiJhaWRjYXN0LnZlcmNlbC5hcHAifQ",
+    "signature": "Cfd1o/L4AOA99scy4i0mDb4MlD8+qwLhc3cN9Z0LL0UpuVR0Qef97XhS8LgUXxU9j59EP16BGPHNDPqwAJPb4xw="
   },
   "miniapp": {
     "version": "1",
     "name": "AIdCast",
-    "homeUrl": "https://example.com",
-    "iconUrl": "https://example.com/icon.png",
-    "imageUrl": "https://example.com/og-image.png",
+    "homeUrl": "https://aidcast.vercel.app",
+    "iconUrl": "https://aidcast.vercel.app/icon.png",
+    "imageUrl": "https://aidcast.vercel.app/og-image.png",
     "buttonTitle": "Open AIdCast",
-    "splashImageUrl": "https://example.com/splash.png",
+    "splashImageUrl": "https://aidcast.vercel.app/splash.png",
     "splashBackgroundColor": "#ffffff"
   }
 }

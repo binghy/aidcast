@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
+import Card from "@/components/Card";
 
 type AnalysisResult = {
   category: string;
@@ -56,11 +57,11 @@ export default function SubmitPage() {
         return;
       }
 
-      setMessage(`Entry analyzed with ${analysis.source} and saved successfully.`);
+      setMessage(`Saved successfully with ${analysis.source.toUpperCase()} analysis.`);
       setText("");
       setType("request");
     } catch (err) {
-      console.error("Unexpected error:", err);
+      console.error(err);
       setMessage("Unexpected error while saving entry.");
     } finally {
       setLoading(false);
@@ -68,38 +69,82 @@ export default function SubmitPage() {
   };
 
   return (
-    <main className="p-6 max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Submit</h1>
+    <main className="min-h-screen bg-zinc-50 px-4 py-8">
+      <div className="mx-auto max-w-md">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold tracking-tight text-zinc-900">
+            Submit
+          </h1>
+          <p className="mt-2 text-sm text-zinc-600">
+            Create a request if you need help, or an offer if you can support someone.
+          </p>
+        </div>
 
-      <div className="mb-4">
-        <label className="block mb-2 font-medium">Type</label>
-        <select
-          value={type}
-          onChange={(e) => setType(e.target.value as "request" | "offer")}
-          className="border p-2 rounded w-full"
-        >
-          <option value="request">Request</option>
-          <option value="offer">Offer</option>
-        </select>
+        <Card className="p-5">
+          <div className="space-y-4">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-800">
+                Type
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setType("request")}
+                  className={`rounded-xl px-4 py-3 text-sm font-medium border ${
+                    type === "request"
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-white text-zinc-800 border-zinc-300"
+                  }`}
+                >
+                  Request
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setType("offer")}
+                  className={`rounded-xl px-4 py-3 text-sm font-medium border ${
+                    type === "offer"
+                      ? "bg-emerald-600 text-white border-emerald-600"
+                      : "bg-white text-zinc-800 border-zinc-300"
+                  }`}
+                >
+                  Offer
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-800">
+                Description
+              </label>
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder={
+                  type === "request"
+                    ? "Example: I need help translating legal documents into English by tomorrow."
+                    : "Example: I can help with React and Next.js development."
+                }
+                className="min-h-[160px] w-full rounded-2xl border border-zinc-300 bg-white p-4 text-sm text-zinc-900 outline-none ring-0 placeholder:text-zinc-400"
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={loading}
+              className="w-full rounded-2xl bg-black px-4 py-3 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {loading ? "Analyzing..." : "Submit"}
+            </button>
+
+            {message && (
+              <div className="rounded-xl bg-zinc-100 px-3 py-3 text-sm text-zinc-700">
+                {message}
+              </div>
+            )}
+          </div>
+        </Card>
       </div>
-
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder="Describe your request or offer..."
-        className="w-full border p-3 rounded mb-4 min-h-[140px]"
-      />
-
-      <button
-        type="button"
-        onClick={handleSubmit}
-        disabled={loading}
-        className="px-4 py-2 bg-black text-white rounded disabled:opacity-50"
-      >
-        {loading ? "Analyzing..." : "Submit"}
-      </button>
-
-      {message && <p className="mt-4">{message}</p>}
     </main>
   );
 }

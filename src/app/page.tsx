@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import Card from "@/components/Card";
 
 export const metadata: Metadata = {
   title: "AIdCast",
@@ -30,21 +32,52 @@ export const metadata: Metadata = {
 
 export default function Home() {
   return (
-    <main className="flex flex-col items-center justify-center min-h-screen gap-6 p-6">
-      <h1 className="text-3xl font-bold">AIdCast</h1>
+    <main className="min-h-screen bg-gradient-to-b from-blue-50 via-white to-white px-4 py-8">
+      <div className="mx-auto flex max-w-md flex-col gap-6">
+        <div className="flex flex-col items-center text-center gap-4 pt-6">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600 text-3xl font-bold text-white shadow-md">
+            AId
+          </div>
 
-      <p className="text-center max-w-md">
-        AI-powered mutual aid app connecting people who need help with those who can offer it.
-      </p>
+          <div className="space-y-2">
+            <h1 className="text-4xl font-bold tracking-tight text-zinc-900">
+              AIdCast
+            </h1>
+            <p className="text-sm leading-6 text-zinc-600">
+              AI-powered mutual aid app connecting people who need help with those
+              who can offer it.
+            </p>
+          </div>
+        </div>
 
-      <div className="flex gap-4">
-        <a href="/submit" className="px-4 py-2 bg-black text-white rounded">
-          Submit
-        </a>
+        <Card className="p-5">
+          <div className="space-y-3">
+            <h2 className="text-lg font-semibold text-zinc-900">
+              How it works
+            </h2>
+            <ul className="space-y-2 text-sm text-zinc-600">
+              <li>Post a request or offer support</li>
+              <li>AI classifies and ranks relevant matches</li>
+              <li>Connect faster with the right people</li>
+            </ul>
+          </div>
+        </Card>
 
-        <a href="/board" className="px-4 py-2 border rounded">
-          View Board
-        </a>
+        <div className="grid grid-cols-1 gap-3">
+          <Link
+            href="/submit"
+            className="inline-flex items-center justify-center rounded-2xl bg-black px-4 py-3 text-sm font-medium text-white shadow-sm"
+          >
+            Create Request or Offer
+          </Link>
+
+          <Link
+            href="/board"
+            className="inline-flex items-center justify-center rounded-2xl border border-zinc-300 bg-white px-4 py-3 text-sm font-medium text-zinc-900"
+          >
+            View Community Board
+          </Link>
+        </div>
       </div>
     </main>
   );

@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { findMatchesForRequest, ScoredMatch } from "@/lib/matching";
+import Badge from "@/components/Badge";
+import Card from "@/components/Card";
 
 type Entry = {
   id: number;
@@ -26,6 +28,7 @@ export default function BoardPage() {
       const { data, error } = await supabase
         .from("entries")
         .select("*")
+        .eq("status", "open")
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -55,72 +58,101 @@ export default function BoardPage() {
   }, []);
 
   return (
-    <main className="p-6 max-w-3xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Board</h1>
+    <main className="min-h-screen bg-zinc-50 px-4 py-8">
+      <div className="mx-auto max-w-md space-y-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-zinc-900">
+            Community Board
+          </h1>
+          <p className="mt-2 text-sm text-zinc-600">
+            Open requests and offers, ranked by AI.
+          </p>
+        </div>
 
-      {loading && <p>Loading...</p>}
-      {message && <p className="mb-4 text-red-600">{message}</p>}
-      {!loading && entries.length === 0 && !message && <p>No entries yet.</p>}
+        {loading && (
+          <Card className="p-4">
+            <p className="text-sm text-zinc-600">Loading...</p>
+          </Card>
+        )}
 
-      <div className="space-y-4">
+        {message && (
+          <Card className="p-4">
+            <p className="text-sm text-red-600">{message}</p>
+          </Card>
+        )}
+
+        {!loading && entries.length === 0 && !message && (
+          <Card className="p-5">
+            <p className="text-sm text-zinc-600">No open entries yet.</p>
+          </Card>
+        )}
+
         {entries.map((entry) => (
-          <div key={entry.id} className="border rounded p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm px-2 py-1 rounded border">
-                {entry.type}
-              </span>
-              <span className="text-xs text-gray-500">
+          <Card key={entry.id} className="p-4">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div className="flex flex-wrap gap-2">
+                <Badge variant={entry.type === "request" ? "request" : "offer"}>
+                  {entry.type}
+                </Badge>
+                <Badge variant={entry.priority as "high" | "medium" | "low"}>
+                  {entry.priority || "priority"}
+                </Badge>
+                <Badge variant={entry.status === "open" ? "open" : "closed"}>
+                  {entry.status || "unknown"}
+                </Badge>
+              </div>
+
+              <span className="text-xs text-zinc-400">
                 {new Date(entry.created_at).toLocaleString()}
               </span>
             </div>
 
-            <p className="mb-2 font-medium">
+            <p className="text-lg font-semibold leading-7 text-zinc-900">
               {entry.summary || entry.raw_text}
             </p>
 
-            <div className="flex gap-2 text-sm text-gray-600 flex-wrap">
-              <span>Category: {entry.category || "—"}</span>
-              <span>Priority: {entry.priority || "—"}</span>
-              <span>Status: {entry.status || "—"}</span>
-            </div>
+            <p className="mt-2 text-sm text-zinc-500">
+              Category: {entry.category || "—"}
+            </p>
 
             {entry.type === "request" &&
               matches[entry.id] &&
               matches[entry.id].length > 0 && (
-                <div className="mt-3 border-t pt-2">
-                  <p className="text-sm font-medium mb-2">Matches:</p>
+                <div className="mt-4 border-t border-zinc-200 pt-4">
+                  <p className="mb-3 text-sm font-semibold text-zinc-800">
+                    Best matches
+                  </p>
 
-                  <ul className="text-sm space-y-2">
+                  <div className="space-y-3">
                     {matches[entry.id].map((m) => (
-                      <li key={m.id} className="border rounded p-2">
-                        <div className="text-xs text-gray-500 mb-1">offer</div>
+                      <div
+                        key={m.id}
+                        className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3"
+                      >
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                          <Badge variant="offer">offer</Badge>
+                          <span className="text-xs font-medium text-zinc-500">
+                            Score {m.matchScore}
+                          </span>
+                        </div>
 
-                        <div className="font-medium">
+                        <p className="text-sm font-medium text-zinc-900">
                           {m.summary || m.raw_text}
-                        </div>
+                        </p>
 
-                        <div className="text-xs text-gray-500 mt-1">
-                          Score: {m.matchScore}
-                        </div>
+                        <p className="mt-2 text-xs leading-5 text-zinc-500">
+                          {m.matchReason}
+                        </p>
 
-                        <div className="text-xs text-gray-500 mt-1">
-                          Reason: {m.matchReason}
-                        </div>
-
-                        <div className="text-xs text-gray-500 mt-1">
-                          Source: {m.scoreSource}
-                        </div>
-
-                        <div className="text-xs text-gray-500 mt-1">
-                          {m.category || "—"} • {m.priority || "—"} •{" "}
-                          {new Date(m.created_at).toLocaleString()}
-                        </div>
-                      </li>
+                        <p className="mt-2 text-xs text-zinc-400">
+                          {m.category || "—"} • {m.priority || "—"} • {m.scoreSource}
+                        </p>
+                      </div>
                     ))}
-                  </ul>
+                  </div>
                 </div>
               )}
-          </div>
+          </Card>
         ))}
       </div>
     </main>

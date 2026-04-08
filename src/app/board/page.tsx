@@ -47,17 +47,37 @@ export default function BoardPage() {
       }
 
       const entriesData = (data || []) as Entry[];
-      setEntries(entriesData);
 
       const matchMap: Record<number, ScoredMatch[]> = {};
 
       for (const entry of entriesData) {
         if (entry.type === "request" && entry.category) {
-          const offers = await findMatchesForRequest(entry, 3);
-          matchMap[entry.id] = offers;
+            const offers = await findMatchesForRequest(entry, 3);
+            matchMap[entry.id] = offers;
         }
       }
 
+      const sortedEntries = [...entriesData].sort((a, b) => {
+      const aHasMatch = (matchMap[a.id]?.length || 0) > 0;
+      const bHasMatch = (matchMap[b.id]?.length || 0) > 0;
+
+      // 1. request prima di offer
+      if (a.type === "request" && b.type === "offer") return -1;
+      if (a.type === "offer" && b.type === "request") return 1;
+
+      // 2. tra request, quelle con match sopra
+      if (a.type === "request" && b.type === "request") {
+        if (aHasMatch && !bHasMatch) return -1;
+        if (!aHasMatch && bHasMatch) return 1;
+      }
+
+      // 3. fallback: più recenti sopra
+      return (
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      });
+
+      setEntries(sortedEntries);
       setMatches(matchMap);
       setLoading(false);
     };
@@ -65,9 +85,10 @@ export default function BoardPage() {
     fetchEntries();
   }, []);
 
-  return (
-    <main className="min-h-screen bg-zinc-50 px-4 py-6">
-      <div className="mx-auto max-w-md space-y-4">
+return (
+  <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-blue-50 via-white to-violet-50 px-4 py-6">
+    <div className="pointer-events-none absolute inset-0 opacity-5 bg-[url('/og-image.png')] bg-cover bg-center" />
+    <div className="relative mx-auto max-w-md space-y-4">
         <div>
           <div className="mb-2">
             <a href="/" className="text-sm text-zinc-500 hover:text-zinc-800">
@@ -79,7 +100,7 @@ export default function BoardPage() {
             Community Board
           </h1>
           <p className="mt-2 text-sm text-zinc-600">
-            Open requests and offers, ranked by AI.
+            Open requests and offers, ranked by AI and enriched with support mode and location.
           </p>
         </div>
 
@@ -140,11 +161,15 @@ export default function BoardPage() {
                   </p>
 
                   <div className="space-y-3">
-                    {matches[entry.id].map((m) => (
-                      <div
+                    {matches[entry.id].map((m, index) => (
+                    <div
                         key={m.id}
-                        className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3"
-                      >
+                        className={`rounded-2xl border p-3 ${
+                        index === 0
+                            ? "border-blue-200 bg-blue-50 shadow-sm"
+                            : "border-zinc-200 bg-zinc-50"
+                        }`}
+                    >
                         <div className="mb-2 flex items-center justify-between gap-3">
                           <Badge variant="offer">offer</Badge>
                           <span className="text-xs font-medium text-zinc-500">

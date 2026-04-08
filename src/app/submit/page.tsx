@@ -74,9 +74,10 @@ export default function SubmitPage() {
     }
   };
 
-  return (
-    <main className="min-h-screen bg-zinc-50 px-4 py-6">
-      <div className="mx-auto max-w-md">
+return (
+  <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-blue-50 via-white to-violet-50 px-4 py-6">
+    <div className="pointer-events-none absolute inset-0 opacity-5 bg-[url('/splash.png')] bg-cover bg-center" />
+    <div className="relative mx-auto max-w-md">
         <div className="mb-5">
           <div className="mb-2">
             <a href="/" className="text-sm text-zinc-500 hover:text-zinc-800">
@@ -92,7 +93,7 @@ export default function SubmitPage() {
           </p>
         </div>
 
-        <Card className="p-5">
+        <Card className="p-5 shadow-xl">
           <div className="space-y-5">
             <div>
               <label className="mb-2 block text-sm font-medium text-zinc-800">

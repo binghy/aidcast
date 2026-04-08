@@ -32,9 +32,9 @@ export const metadata: Metadata = {
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-gradient-to-b from-blue-50 via-white to-white px-4 py-8">
-      <div className="mx-auto flex max-w-md flex-col gap-6">
-        <div className="flex flex-col items-center text-center gap-4 pt-6">
+    <main className="min-h-screen bg-gradient-to-b from-blue-50 via-white to-white px-4 py-6">
+      <div className="mx-auto flex max-w-md flex-col gap-5">
+        <div className="flex flex-col items-center text-center gap-4 pt-2">
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600 text-3xl font-bold text-white shadow-md">
             AId
           </div>
@@ -64,19 +64,19 @@ export default function Home() {
         </Card>
 
         <div className="grid grid-cols-1 gap-3">
-          <Link
+          <a
             href="/submit"
             className="inline-flex items-center justify-center rounded-2xl bg-black px-4 py-3 text-sm font-medium text-white shadow-sm"
           >
             Create Request or Offer
-          </Link>
+          </a>
 
-          <Link
+          <a
             href="/board"
             className="inline-flex items-center justify-center rounded-2xl border border-zinc-300 bg-white px-4 py-3 text-sm font-medium text-zinc-900"
           >
             View Community Board
-          </Link>
+          </a>
         </div>
       </div>
     </main>

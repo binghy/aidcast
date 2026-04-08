@@ -9,6 +9,8 @@ type Entry = {
   summary: string | null;
   status: string | null;
   created_at: string;
+  support_mode: "online" | "in_person" | "both" | null;
+  location_text: string | null;
 };
 
 export type ScoredMatch = Entry & {
@@ -18,31 +20,9 @@ export type ScoredMatch = Entry & {
 };
 
 const STOPWORDS = new Set([
-  "i",
-  "can",
-  "help",
-  "the",
-  "a",
-  "an",
-  "to",
-  "from",
-  "with",
-  "and",
-  "or",
-  "for",
-  "of",
-  "in",
-  "on",
-  "at",
-  "by",
-  "is",
-  "are",
-  "this",
-  "that",
-  "it",
-  "be",
-  "as",
-  "into",
+  "i", "can", "help", "the", "a", "an", "to", "from", "with", "and", "or",
+  "for", "of", "in", "on", "at", "by", "is", "are", "this", "that", "it",
+  "be", "as", "into",
 ]);
 
 function normalizeText(text: string) {
@@ -75,7 +55,6 @@ function uniqueWords(words: string[]) {
 function getCommonWords(a: string, b: string): string[] {
   const aWords = new Set(uniqueWords(tokenize(a)));
   const bWords = new Set(uniqueWords(tokenize(b)));
-
   return Array.from(aWords).filter((word) => bWords.has(word));
 }
 
@@ -96,6 +75,36 @@ function getRecencyBoost(createdAt: string) {
   return 0;
 }
 
+function extractCity(location: string | null): string | null {
+  if (!location) return null;
+  const firstPart = location.split(",")[0]?.trim().toLowerCase();
+  return firstPart || null;
+}
+
+function getLocationBoost(request: Entry, offer: Entry) {
+  const requestMode = request.support_mode || "online";
+  const offerMode = offer.support_mode || "online";
+
+  const requestNeedsLocation = requestMode === "in_person" || requestMode === "both";
+  const offerNeedsLocation = offerMode === "in_person" || offerMode === "both";
+
+  if (!requestNeedsLocation && !offerNeedsLocation) {
+    return { boost: 0, reason: null as string | null };
+  }
+
+  const requestCity = extractCity(request.location_text);
+  const offerCity = extractCity(offer.location_text);
+
+  if (requestCity && offerCity && requestCity === offerCity) {
+    return {
+      boost: 12,
+      reason: `same city: ${requestCity}`,
+    };
+  }
+
+  return { boost: 0, reason: null as string | null };
+}
+
 async function evaluateMatchWithLLM(
   requestText: string,
   offerText: string
@@ -106,16 +115,10 @@ async function evaluateMatchWithLLM(
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        requestText,
-        offerText,
-      }),
+      body: JSON.stringify({ requestText, offerText }),
     });
 
-    if (!res.ok) {
-      return null;
-    }
-
+    if (!res.ok) return null;
     return await res.json();
   } catch (error) {
     console.error("LLM match evaluation failed:", error);
@@ -143,14 +146,11 @@ export async function findMatchesForRequest(
 
   const offers = (data || []) as Entry[];
 
-  const filtered = offers.filter((offer) => offer.id !== request.id);
-
   const seen = new Set<string>();
   const deduped: Entry[] = [];
 
-  for (const offer of filtered) {
+  for (const offer of offers) {
     const fingerprint = normalizeText(offer.summary || offer.raw_text || "");
-
     if (!fingerprint) continue;
 
     if (!seen.has(fingerprint)) {
@@ -170,8 +170,9 @@ export async function findMatchesForRequest(
     const keywordBoost = commonWords.length * 5;
     const priorityBoost = getPriorityBoost(offer.priority);
     const recencyBoost = getRecencyBoost(offer.created_at);
+    const locationInfo = getLocationBoost(request, offer);
 
-    score += keywordBoost + priorityBoost + recencyBoost;
+    score += keywordBoost + priorityBoost + recencyBoost + locationInfo.boost;
 
     const reasons: string[] = [`same category: ${request.category}`];
 
@@ -179,13 +180,9 @@ export async function findMatchesForRequest(
       reasons.push(`shared words: ${commonWords.slice(0, 4).join(", ")}`);
     }
 
-    if (offer.priority) {
-      reasons.push(`priority: ${offer.priority}`);
-    }
-
-    if (recencyBoost > 0) {
-      reasons.push("recent offer");
-    }
+    if (offer.priority) reasons.push(`priority: ${offer.priority}`);
+    if (recencyBoost > 0) reasons.push("recent offer");
+    if (locationInfo.reason) reasons.push(locationInfo.reason);
 
     return {
       ...offer,
@@ -197,9 +194,7 @@ export async function findMatchesForRequest(
 
   lexicalScored.sort((a, b) => b.matchScore - a.matchScore);
 
-  // Pre-filtro: teniamo solo i migliori 5 candidati lessicali
   const topCandidates = lexicalScored.slice(0, 5);
-
   const llmEvaluated: ScoredMatch[] = [];
 
   for (const candidate of topCandidates) {
@@ -209,24 +204,24 @@ export async function findMatchesForRequest(
     );
 
     if (!llmResult) {
-      // fallback: se LLM fallisce, tieni il match lessicale
       llmEvaluated.push(candidate);
       continue;
     }
 
-    if (!llmResult.isMatch) {
-      continue;
-    }
+    if (!llmResult.isMatch) continue;
+
+    const locationInfo = getLocationBoost(request, candidate);
 
     llmEvaluated.push({
       ...candidate,
-      matchScore: llmResult.score,
-      matchReason: llmResult.reason,
+      matchScore: Math.min(100, llmResult.score + locationInfo.boost),
+      matchReason: locationInfo.reason
+        ? `${llmResult.reason} • ${locationInfo.reason}`
+        : llmResult.reason,
       scoreSource: "llm",
     });
   }
 
   llmEvaluated.sort((a, b) => b.matchScore - a.matchScore);
-
   return llmEvaluated.slice(0, limit);
 }

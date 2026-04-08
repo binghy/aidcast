@@ -14,6 +14,8 @@ type AnalysisResult = {
 export default function SubmitPage() {
   const [text, setText] = useState("");
   const [type, setType] = useState<"request" | "offer">("request");
+  const [supportMode, setSupportMode] = useState<"online" | "in_person" | "both">("online");
+  const [locationText, setLocationText] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -49,6 +51,8 @@ export default function SubmitPage() {
           priority: analysis.priority,
           summary: analysis.summary,
           status: "open",
+          support_mode: supportMode,
+          location_text: locationText.trim() || null,
         },
       ]);
 
@@ -60,6 +64,8 @@ export default function SubmitPage() {
       setMessage(`Saved successfully with ${analysis.source.toUpperCase()} analysis.`);
       setText("");
       setType("request");
+      setSupportMode("online");
+      setLocationText("");
     } catch (err) {
       console.error(err);
       setMessage("Unexpected error while saving entry.");
@@ -69,9 +75,15 @@ export default function SubmitPage() {
   };
 
   return (
-    <main className="min-h-screen bg-zinc-50 px-4 py-8">
+    <main className="min-h-screen bg-zinc-50 px-4 py-6">
       <div className="mx-auto max-w-md">
-        <div className="mb-6">
+        <div className="mb-5">
+          <div className="mb-2">
+            <a href="/" className="text-sm text-zinc-500 hover:text-zinc-800">
+              ← Back home
+            </a>
+          </div>
+
           <h1 className="text-3xl font-bold tracking-tight text-zinc-900">
             Submit
           </h1>
@@ -81,7 +93,7 @@ export default function SubmitPage() {
         </div>
 
         <Card className="p-5">
-          <div className="space-y-4">
+          <div className="space-y-5">
             <div>
               <label className="mb-2 block text-sm font-medium text-zinc-800">
                 Type
@@ -90,7 +102,7 @@ export default function SubmitPage() {
                 <button
                   type="button"
                   onClick={() => setType("request")}
-                  className={`rounded-xl px-4 py-3 text-sm font-medium border ${
+                  className={`rounded-xl px-4 py-3 text-sm font-medium border transition ${
                     type === "request"
                       ? "bg-blue-600 text-white border-blue-600"
                       : "bg-white text-zinc-800 border-zinc-300"
@@ -101,7 +113,7 @@ export default function SubmitPage() {
                 <button
                   type="button"
                   onClick={() => setType("offer")}
-                  className={`rounded-xl px-4 py-3 text-sm font-medium border ${
+                  className={`rounded-xl px-4 py-3 text-sm font-medium border transition ${
                     type === "offer"
                       ? "bg-emerald-600 text-white border-emerald-600"
                       : "bg-white text-zinc-800 border-zinc-300"
@@ -110,6 +122,47 @@ export default function SubmitPage() {
                   Offer
                 </button>
               </div>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-800">
+                Support mode
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {["online", "in_person", "both"].map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setSupportMode(mode as "online" | "in_person" | "both")}
+                    className={`rounded-xl px-3 py-3 text-sm font-medium border transition ${
+                      supportMode === mode
+                        ? "bg-zinc-900 text-white border-zinc-900"
+                        : "bg-white text-zinc-800 border-zinc-300"
+                    }`}
+                  >
+                    {mode === "online"
+                      ? "Online"
+                      : mode === "in_person"
+                      ? "In person"
+                      : "Both"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-800">
+                Location
+              </label>
+              <input
+                value={locationText}
+                onChange={(e) => setLocationText(e.target.value)}
+                placeholder="Example: Milan, Italy"
+                className="w-full rounded-2xl border border-zinc-300 bg-white px-4 py-3 text-sm text-zinc-900 placeholder:text-zinc-500 outline-none"
+              />
+              <p className="mt-2 text-xs text-zinc-500">
+                Optional. Useful for in-person support or hybrid requests.
+              </p>
             </div>
 
             <div>
@@ -124,7 +177,7 @@ export default function SubmitPage() {
                     ? "Example: I need help translating legal documents into English by tomorrow."
                     : "Example: I can help with React and Next.js development."
                 }
-                className="min-h-[160px] w-full rounded-2xl border border-zinc-300 bg-white p-4 text-sm text-zinc-900 outline-none ring-0 placeholder:text-zinc-400"
+                className="min-h-[160px] w-full rounded-2xl border border-zinc-300 bg-white p-4 text-sm text-zinc-900 outline-none placeholder:text-zinc-500"
               />
             </div>
 

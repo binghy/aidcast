@@ -15,7 +15,15 @@ type Entry = {
   summary: string | null;
   status: string | null;
   created_at: string;
+  support_mode: "online" | "in_person" | "both" | null;
+  location_text: string | null;
 };
+
+function supportModeLabel(mode: string | null) {
+  if (mode === "in_person") return "In person";
+  if (mode === "both") return "Both";
+  return "Online";
+}
 
 export default function BoardPage() {
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -58,9 +66,15 @@ export default function BoardPage() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-zinc-50 px-4 py-8">
+    <main className="min-h-screen bg-zinc-50 px-4 py-6">
       <div className="mx-auto max-w-md space-y-4">
         <div>
+          <div className="mb-2">
+            <a href="/" className="text-sm text-zinc-500 hover:text-zinc-800">
+              ← Back home
+            </a>
+          </div>
+
           <h1 className="text-3xl font-bold tracking-tight text-zinc-900">
             Community Board
           </h1>
@@ -111,9 +125,11 @@ export default function BoardPage() {
               {entry.summary || entry.raw_text}
             </p>
 
-            <p className="mt-2 text-sm text-zinc-500">
-              Category: {entry.category || "—"}
-            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Badge>{entry.category || "other"}</Badge>
+              <Badge>{supportModeLabel(entry.support_mode)}</Badge>
+              {entry.location_text && <Badge>{entry.location_text}</Badge>}
+            </div>
 
             {entry.type === "request" &&
               matches[entry.id] &&
@@ -140,12 +156,18 @@ export default function BoardPage() {
                           {m.summary || m.raw_text}
                         </p>
 
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <Badge>{m.category || "other"}</Badge>
+                          <Badge>{supportModeLabel(m.support_mode)}</Badge>
+                          {m.location_text && <Badge>{m.location_text}</Badge>}
+                        </div>
+
                         <p className="mt-2 text-xs leading-5 text-zinc-500">
                           {m.matchReason}
                         </p>
 
                         <p className="mt-2 text-xs text-zinc-400">
-                          {m.category || "—"} • {m.priority || "—"} • {m.scoreSource}
+                          {m.priority || "—"} • {m.scoreSource}
                         </p>
                       </div>
                     ))}

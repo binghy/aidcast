@@ -45,7 +45,7 @@ export default function Home() {
             <h1 className="text-4xl font-bold tracking-tight text-zinc-900">
               AIdCast
             </h1>
-            <p className="text-sm leading-6 text-zinc-700">
+            <p className="mx-auto max-w-sm rounded-2xl bg-white/60 px-3 py-2 text-base font-semibold leading-7 text-zinc-900 backdrop-blur-sm">
               AI-powered mutual aid app connecting people who need help with those
               who can offer it.
             </p>
@@ -54,10 +54,11 @@ export default function Home() {
 
         <Card className="p-5">
           <div className="space-y-3">
-            <h2 className="text-lg font-semibold text-zinc-900">
+            <h2 className="text-center text-lg font-semibold text-zinc-900">
               How it works
             </h2>
-            <ul className="space-y-2 text-sm text-zinc-700">
+
+            <ul className="list-disc space-y-2 pl-5 text-sm text-zinc-700">
               <li>Post a request or offer support</li>
               <li>AI classifies and ranks relevant matches</li>
               <li>Connect faster with the right people</li>

@@ -198,6 +198,15 @@ export async function findMatchesForRequest(
   const llmEvaluated: ScoredMatch[] = [];
 
   for (const candidate of topCandidates) {
+    const requestMode = request.support_mode || "online";
+    const candidateMode = candidate.support_mode || "online";
+
+    if (
+    request.category === "physical_goods" &&
+    (requestMode === "online" || candidateMode === "online")
+    ) {
+    continue;
+    }
     const llmResult = await evaluateMatchWithLLM(
       request.summary || request.raw_text,
       candidate.summary || candidate.raw_text

@@ -79,18 +79,18 @@ return (
     <div className="pointer-events-none absolute inset-0 opacity-5 bg-[url('/splash.png')] bg-cover bg-center" />
     <div className="relative mx-auto max-w-md">
         <div className="mb-5">
-          <div className="mb-2">
+        <div className="mb-2">
             <a href="/" className="text-sm text-zinc-500 hover:text-zinc-800">
-              ← Back home
+            ← Back home
             </a>
-          </div>
+        </div>
 
-          <h1 className="text-3xl font-bold tracking-tight text-zinc-900">
+        <h1 className="text-center text-3xl font-bold tracking-tight text-zinc-900">
             Submit
-          </h1>
-          <p className="mt-2 text-sm text-zinc-600">
+        </h1>
+        <p className="mt-2 text-center text-sm text-zinc-600">
             Create a request if you need help, or an offer if you can support someone.
-          </p>
+        </p>
         </div>
 
         <Card className="p-5 shadow-xl">

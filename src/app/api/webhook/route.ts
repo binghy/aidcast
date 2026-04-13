@@ -6,82 +6,145 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+function decodeBase64Url(input: string) {
+  const base64 = input.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+  return Buffer.from(padded, "base64").toString("utf8");
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    console.log("Webhook body:", body);
 
-    // Adattiamo il parser in modo tollerante perché gli eventi possono variare.
-    // Cerchiamo fid, token e url nei campi più probabili.
+    console.log("Webhook raw envelope:", JSON.stringify(body, null, 2));
+
+    const header = body?.header;
+    const payloadEncoded = body?.payload;
+    const signature = body?.signature;
+
+    if (!header || !payloadEncoded || !signature) {
+      return NextResponse.json(
+        { error: "Invalid webhook envelope" },
+        { status: 400 }
+      );
+    }
+
+    const decodedPayloadString = decodeBase64Url(payloadEncoded);
+    const payload = JSON.parse(decodedPayloadString);
+
+    console.log("Webhook decoded payload:", JSON.stringify(payload, null, 2));
+
+    const eventType =
+      payload?.event ||
+      payload?.type ||
+      payload?.eventType ||
+      null;
+
     const fid =
-      body?.fid ??
-      body?.user?.fid ??
-      body?.data?.fid ??
-      body?.payload?.fid ??
+      payload?.fid ??
+      payload?.user?.fid ??
+      payload?.data?.fid ??
       null;
 
-    const notificationToken =
-      body?.token ??
-      body?.notificationToken ??
-      body?.data?.token ??
-      body?.payload?.token ??
+    const notificationDetails =
+      payload?.notificationDetails ??
+      payload?.data?.notificationDetails ??
       null;
 
-    const notificationUrl =
-      body?.url ??
-      body?.notificationUrl ??
-      body?.data?.url ??
-      body?.payload?.url ??
+    const token =
+      notificationDetails?.token ??
+      payload?.token ??
+      null;
+
+    const url =
+      notificationDetails?.url ??
+      payload?.url ??
       null;
 
     const client =
-      body?.client ??
-      body?.data?.client ??
-      body?.payload?.client ??
+      payload?.client ??
+      payload?.data?.client ??
       null;
 
-    // Se riceviamo dati validi, li salviamo/upsertiamo
-    if (fid && notificationToken && notificationUrl) {
-      const { error } = await supabase
+    // Eventi che attivano/salvano la subscription
+    if (
+      (eventType === "miniapp_added" || eventType === "notifications_enabled") &&
+      fid &&
+      token &&
+      url
+    ) {
+      // Cerchiamo se esiste già la stessa subscription
+      const { data: existing, error: selectError } = await supabase
         .from("notification_subscriptions")
-        .upsert(
-          [
+        .select("id")
+        .eq("fid", Number(fid))
+        .eq("notification_token", token)
+        .maybeSingle();
+
+      if (selectError) {
+        console.error("Webhook select error:", selectError);
+      }
+
+      if (existing?.id) {
+        const { error: updateError } = await supabase
+          .from("notification_subscriptions")
+          .update({
+            notification_url: url,
+            client,
+            is_active: true,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existing.id);
+
+        if (updateError) {
+          console.error("Webhook update error:", updateError);
+          return NextResponse.json(
+            { error: updateError.message },
+            { status: 400 }
+          );
+        }
+      } else {
+        const { error: insertError } = await supabase
+          .from("notification_subscriptions")
+          .insert([
             {
               fid: Number(fid),
-              notification_token: notificationToken,
-              notification_url: notificationUrl,
+              notification_token: token,
+              notification_url: url,
               client,
               is_active: true,
               updated_at: new Date().toISOString(),
             },
-          ],
-          {
-            onConflict: "fid,notification_token",
-            ignoreDuplicates: false,
-          }
-        );
+          ]);
 
-      if (error) {
-        console.error("Webhook save error:", error);
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        if (insertError) {
+          console.error("Webhook insert error:", insertError);
+          return NextResponse.json(
+            { error: insertError.message },
+            { status: 400 }
+          );
+        }
       }
     }
 
-    // Se il client segnala disattivazione, si può marcare inactive
-    const disabledFid =
-      body?.disabled?.fid ??
-      body?.data?.disabled?.fid ??
-      body?.payload?.disabled?.fid ??
-      null;
+    // Eventi che disattivano
+    if (
+      eventType === "miniapp_removed" ||
+      eventType === "notifications_disabled"
+    ) {
+      if (fid) {
+        const { error: disableError } = await supabase
+          .from("notification_subscriptions")
+          .update({
+            is_active: false,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("fid", Number(fid));
 
-    if (disabledFid) {
-      await supabase
-        .from("notification_subscriptions")
-        .update({
-          is_active: false,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("fid", Number(disabledFid));
+        if (disableError) {
+          console.error("Webhook disable error:", disableError);
+        }
+      }
     }
 
     return NextResponse.json({ ok: true });

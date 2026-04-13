@@ -33,6 +33,14 @@ export async function POST(req: NextRequest) {
     const payload = JSON.parse(decodedPayloadString);
 
     console.log("Webhook decoded payload:", JSON.stringify(payload, null, 2));
+    console.log("Webhook eventType:", payload?.event);
+    console.log(
+      "Webhook fid candidates:",
+      payload?.fid,
+      payload?.user?.fid,
+      payload?.data?.fid
+    );
+    console.log("Webhook notificationDetails:", payload?.notificationDetails);
 
     const eventType =
       payload?.event ||
@@ -66,14 +74,16 @@ export async function POST(req: NextRequest) {
       payload?.data?.client ??
       null;
 
-    // Eventi che attivano/salvano la subscription
     if (
-      (eventType === "miniapp_added" || eventType === "notifications_enabled") &&
+      (
+        eventType === "miniapp_added" ||
+        eventType === "notifications_enabled" ||
+        eventType === "frame_added"
+      ) &&
       fid &&
       token &&
       url
     ) {
-      // Cerchiamo se esiste già la stessa subscription
       const { data: existing, error: selectError } = await supabase
         .from("notification_subscriptions")
         .select("id")
@@ -127,10 +137,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Eventi che disattivano
     if (
       eventType === "miniapp_removed" ||
-      eventType === "notifications_disabled"
+      eventType === "notifications_disabled" ||
+      eventType === "frame_removed"
     ) {
       if (fid) {
         const { error: disableError } = await supabase

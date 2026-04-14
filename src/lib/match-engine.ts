@@ -24,6 +24,7 @@ export type MatchEvaluation = {
     recency: number;
     location: number;
     supportMode: number;
+    intent: number;
   };
 };
 
@@ -158,6 +159,28 @@ function categoryKind(category: string | null) {
   return "service";
 }
 
+function inferIntent(text: string) {
+  const t = normalizeText(text);
+
+  if (t.includes("loan") || t.includes("rent") || t.includes("borrow")) {
+    return "loan";
+  }
+
+  if (t.includes("give") || t.includes("provide")) {
+    return "give";
+  }
+
+  if (t.includes("help") || t.includes("assist")) {
+    return "help";
+  }
+
+  if (t.includes("explain") || t.includes("teach") || t.includes("tutor")) {
+    return "explain";
+  }
+
+  return "generic";
+}
+
 function supportCompatibility(request: EntryLike, offer: EntryLike) {
   const requestMode = request.support_mode || "online";
   const offerMode = offer.support_mode || "online";
@@ -179,7 +202,6 @@ function supportCompatibility(request: EntryLike, offer: EntryLike) {
     };
   }
 
-  // services
   if (requestMode === "in_person") {
     if (offerMode === "online") {
       return {
@@ -197,7 +219,11 @@ function supportCompatibility(request: EntryLike, offer: EntryLike) {
   }
 
   if (requestMode === "both") {
-    if (offerMode === "online" || offerMode === "in_person" || offerMode === "both") {
+    if (
+      offerMode === "online" ||
+      offerMode === "in_person" ||
+      offerMode === "both"
+    ) {
       return {
         isCompatible: true,
         score: 6,
@@ -206,7 +232,6 @@ function supportCompatibility(request: EntryLike, offer: EntryLike) {
     }
   }
 
-  // online request by default
   if (requestMode === "online") {
     return {
       isCompatible: true,
@@ -268,7 +293,6 @@ function locationCompatibility(request: EntryLike, offer: EntryLike) {
     };
   }
 
-  // services
   if (requestCity && offerCity && requestCity === offerCity) {
     return {
       isCompatible: true,
@@ -301,6 +325,7 @@ export function evaluateOfferForRequest(
         recency: 0,
         location: 0,
         supportMode: 0,
+        intent: 0,
       },
     };
   }
@@ -319,6 +344,7 @@ export function evaluateOfferForRequest(
         recency: 0,
         location: 0,
         supportMode: 0,
+        intent: 0,
       },
     };
   }
@@ -337,6 +363,7 @@ export function evaluateOfferForRequest(
         recency: 0,
         location: 0,
         supportMode: support.score,
+        intent: 0,
       },
     };
   }
@@ -352,6 +379,22 @@ export function evaluateOfferForRequest(
   const recencyScore = getRecencyBoost(offer.created_at);
   const categoryScore = 20;
 
+  const requestIntent = inferIntent(requestText);
+  const offerIntent = inferIntent(offerText);
+
+  let intentScore = 0;
+
+  if (requestIntent === offerIntent) {
+    intentScore = 12;
+  } else if (
+    (requestIntent === "loan" && offerIntent === "give") ||
+    (requestIntent === "give" && offerIntent === "loan")
+  ) {
+    intentScore = 8;
+  } else {
+    intentScore = 2;
+  }
+
   const score =
     categoryScore +
     textOverlapScore +
@@ -359,10 +402,12 @@ export function evaluateOfferForRequest(
     offerUrgencyScore +
     recencyScore +
     location.score +
-    support.score;
+    support.score +
+    intentScore;
 
   const reasons = [
     "same category",
+    requestIntent === offerIntent ? `same intent: ${requestIntent}` : null,
     commonWords.length > 0 ? `shared words: ${commonWords.slice(0, 4).join(", ")}` : null,
     request.priority ? `request priority: ${request.priority}` : null,
     offerUrgencyScore > 0 ? "offer indicates immediate availability" : null,
@@ -383,6 +428,7 @@ export function evaluateOfferForRequest(
       recency: recencyScore,
       location: location.score,
       supportMode: support.score,
+      intent: intentScore,
     },
   };
 }

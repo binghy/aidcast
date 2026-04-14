@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
 import { findMatchesForRequest, ScoredMatch } from "@/lib/matching";
-import Badge from "@/components/Badge";
 import Card from "@/components/Card";
+import Badge from "@/components/Badge";
 
 type Entry = {
   id: number;
@@ -23,188 +22,212 @@ type Entry = {
   location_text: string | null;
 };
 
-function supportModeLabel(mode: string | null) {
-  if (mode === "in_person") return "In person";
-  if (mode === "both") return "Both";
-  return "Online";
+function formatDate(value: string) {
+  try {
+    return new Date(value).toLocaleString("en-GB");
+  } catch {
+    return value;
+  }
+}
+
+function typeBadgeClass(type: Entry["type"]) {
+  return type === "request"
+    ? "bg-blue-100 text-blue-700 border-blue-200"
+    : "bg-violet-100 text-violet-700 border-violet-200";
+}
+
+function priorityBadgeClass(priority: string | null) {
+  if (priority === "high") return "bg-red-100 text-red-700 border-red-200";
+  if (priority === "medium")
+    return "bg-amber-100 text-amber-700 border-amber-200";
+  return "bg-sky-100 text-sky-700 border-sky-200";
+}
+
+function statusBadgeClass(status: string | null) {
+  if (status === "closed") return "bg-rose-100 text-rose-700 border-rose-200";
+  return "bg-emerald-100 text-emerald-700 border-emerald-200";
 }
 
 export default function BoardPage() {
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [matchesMap, setMatchesMap] = useState<Record<number, ScoredMatch[]>>({});
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("");
-  const [matches, setMatches] = useState<Record<number, ScoredMatch[]>>({});
 
   useEffect(() => {
     const fetchEntries = async () => {
-      const { data, error } = await supabase
-        .from("entries")
-        .select("*")
-        .eq("status", "open")
-        .order("created_at", { ascending: false });
+      setLoading(true);
 
-      if (error) {
-        console.error("Board fetch error:", error);
-        setMessage(`Error loading entries: ${error.message}`);
-        setLoading(false);
-        return;
+      const res = await fetch("/api/board");
+      const json = await res.json();
+
+      const fetchedEntries = (json?.entries || []) as Entry[];
+      setEntries(fetchedEntries);
+
+      const requestEntries = fetchedEntries.filter((e) => e.type === "request");
+      const matches: Record<number, ScoredMatch[]> = {};
+
+      for (const request of requestEntries) {
+        matches[request.id] = await findMatchesForRequest(request, 3);
       }
 
-      const entriesData = (data || []) as Entry[];
-
-      const matchMap: Record<number, ScoredMatch[]> = {};
-
-      for (const entry of entriesData) {
-        if (entry.type === "request" && entry.category) {
-            const offers = await findMatchesForRequest(entry, 3);
-            matchMap[entry.id] = offers;
-        }
-      }
-
-      const sortedEntries = [...entriesData].sort((a, b) => {
-      const aHasMatch = (matchMap[a.id]?.length || 0) > 0;
-      const bHasMatch = (matchMap[b.id]?.length || 0) > 0;
-
-      // 1. request prima di offer
-      if (a.type === "request" && b.type === "offer") return -1;
-      if (a.type === "offer" && b.type === "request") return 1;
-
-      // 2. tra request, quelle con match sopra
-      if (a.type === "request" && b.type === "request") {
-        if (aHasMatch && !bHasMatch) return -1;
-        if (!aHasMatch && bHasMatch) return 1;
-      }
-
-      // 3. fallback: più recenti sopra
-      return (
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
-      });
-
-      setEntries(sortedEntries);
-      setMatches(matchMap);
+      setMatchesMap(matches);
       setLoading(false);
     };
 
     fetchEntries();
   }, []);
 
-return (
-  <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-blue-50 via-white to-violet-50 px-4 py-6">
-    <div className="pointer-events-none absolute inset-0 opacity-5 bg-[url('/og-image.png')] bg-cover bg-center" />
-    <div className="relative mx-auto max-w-md space-y-4">
-        <div>
-        <div className="mb-2">
-            <a href="/" className="text-sm text-zinc-500 hover:text-zinc-800">
-            ← Back home
-            </a>
-        </div>
+  return (
+    <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-blue-100 via-slate-50 to-violet-100 px-4 py-6">
+      <div className="pointer-events-none absolute inset-0 opacity-[0.08] bg-[url('/og-image.png')] bg-cover bg-center" />
+      <div className="pointer-events-none absolute inset-0 bg-white/35" />
 
-        <h1 className="text-center text-3xl font-bold tracking-tight text-zinc-900">
+      <div className="relative mx-auto flex max-w-md flex-col gap-4">
+        <a href="/" className="text-sm text-zinc-600 hover:text-zinc-900">
+          ← Back home
+        </a>
+
+        <div className="space-y-2 text-center">
+          <h1 className="text-4xl font-bold tracking-tight text-zinc-950">
             Community Board
-        </h1>
-        <p className="mt-2 text-center text-sm text-zinc-600">
-            Open requests and offers, ranked by AI and enriched with support mode and location.
-        </p>
+          </h1>
+          <p className="text-base leading-7 text-zinc-700">
+            Open requests and offers, ranked by AI and enriched with support mode
+            and location.
+          </p>
         </div>
 
-        {loading && (
-          <Card className="p-4">
-            <p className="text-sm text-zinc-600">Loading...</p>
+        {loading ? (
+          <Card className="rounded-3xl border border-black/10 bg-white/85 p-5 shadow-md backdrop-blur-md">
+            <p className="text-sm text-zinc-600">Loading board...</p>
           </Card>
-        )}
-
-        {message && (
-          <Card className="p-4">
-            <p className="text-sm text-red-600">{message}</p>
-          </Card>
-        )}
-
-        {!loading && entries.length === 0 && !message && (
-          <Card className="p-5">
+        ) : entries.length === 0 ? (
+          <Card className="rounded-3xl border border-black/10 bg-white/85 p-5 shadow-md backdrop-blur-md">
             <p className="text-sm text-zinc-600">No open entries yet.</p>
           </Card>
-        )}
+        ) : (
+          <div className="space-y-4">
+            {entries.map((entry) => (
+              <Card
+                key={entry.id}
+                className="rounded-3xl border border-black/10 bg-white/90 p-5 shadow-md backdrop-blur-md"
+              >
+                <div className="space-y-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex flex-wrap gap-2">
+                      <span
+                        className={`rounded-full border px-3 py-1 text-xs font-medium ${typeBadgeClass(
+                          entry.type
+                        )}`}
+                      >
+                        {entry.type}
+                      </span>
 
-        {entries.map((entry) => (
-          <Card key={entry.id} className="p-4">
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <div className="flex flex-wrap gap-2">
-                <Badge variant={entry.type === "request" ? "request" : "offer"}>
-                  {entry.type}
-                </Badge>
-                <Badge variant={entry.priority as "high" | "medium" | "low"}>
-                  {entry.priority || "priority"}
-                </Badge>
-                <Badge variant={entry.status === "open" ? "open" : "closed"}>
-                  {entry.status || "unknown"}
-                </Badge>
-              </div>
+                      <span
+                        className={`rounded-full border px-3 py-1 text-xs font-medium ${priorityBadgeClass(
+                          entry.priority
+                        )}`}
+                      >
+                        {entry.priority || "medium"}
+                      </span>
 
-              <span className="text-xs text-zinc-400">
-                {new Date(entry.created_at).toLocaleString()}
-              </span>
-            </div>
+                      <span
+                        className={`rounded-full border px-3 py-1 text-xs font-medium ${statusBadgeClass(
+                          entry.status
+                        )}`}
+                      >
+                        {entry.status || "open"}
+                      </span>
+                    </div>
 
-            <p className="text-lg font-semibold leading-7 text-zinc-900">
-              {entry.summary || entry.raw_text}
-            </p>
-
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Badge>{entry.category || "other"}</Badge>
-              <Badge>{supportModeLabel(entry.support_mode)}</Badge>
-              {entry.location_text && <Badge>{entry.location_text}</Badge>}
-            </div>
-
-            {entry.type === "request" &&
-              matches[entry.id] &&
-              matches[entry.id].length > 0 && (
-                <div className="mt-4 border-t border-zinc-200 pt-4">
-                  <p className="mb-3 text-sm font-semibold text-zinc-800">
-                    Best matches
-                  </p>
+                    <span className="text-xs text-zinc-500">
+                      {formatDate(entry.created_at)}
+                    </span>
+                  </div>
 
                   <div className="space-y-3">
-                    {matches[entry.id].map((m, index) => (
-                    <div
-                        key={m.id}
-                        className={`rounded-2xl border p-3 ${
-                        index === 0
-                            ? "border-blue-200 bg-blue-50 shadow-sm"
-                            : "border-zinc-200 bg-zinc-50"
-                        }`}
-                    >
-                        <div className="mb-2 flex items-center justify-between gap-3">
-                          <Badge variant="offer">offer</Badge>
-                          <span className="text-xs font-medium text-zinc-500">
-                            Score {m.matchScore}
-                          </span>
-                        </div>
+                    <h2 className="text-2xl font-semibold leading-9 text-zinc-950">
+                      {entry.summary || entry.raw_text}
+                    </h2>
 
-                        <p className="text-sm font-medium text-zinc-900">
-                          {m.summary || m.raw_text}
-                        </p>
+                    <div className="flex flex-wrap gap-2">
+                      {entry.category && (
+                        <Badge>{entry.category}</Badge>
+                      )}
 
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          <Badge>{m.category || "other"}</Badge>
-                          <Badge>{supportModeLabel(m.support_mode)}</Badge>
-                          {m.location_text && <Badge>{m.location_text}</Badge>}
-                        </div>
+                      {entry.support_mode && (
+                        <Badge>
+                          {entry.support_mode === "in_person"
+                            ? "In person"
+                            : entry.support_mode}
+                        </Badge>
+                      )}
 
-                        <p className="mt-2 text-xs leading-5 text-zinc-500">
-                          {m.matchReason}
-                        </p>
-
-                        <p className="mt-2 text-xs text-zinc-400">
-                          {m.priority || "—"} • {m.scoreSource}
-                        </p>
-                      </div>
-                    ))}
+                      {entry.location_text && <Badge>{entry.location_text}</Badge>}
+                    </div>
                   </div>
+
+                  {entry.type === "request" &&
+                    entry.status === "open" &&
+                    matchesMap[entry.id] &&
+                    matchesMap[entry.id].length > 0 && (
+                      <div className="space-y-4 border-t border-black/10 pt-4">
+                        <h3 className="text-lg font-semibold text-zinc-900">
+                          Best matches
+                        </h3>
+
+                        <div className="space-y-3">
+                          {matchesMap[entry.id].map((match) => (
+                            <div
+                              key={match.id}
+                              className="rounded-3xl border border-blue-200 bg-blue-50/60 p-4"
+                            >
+                              <div className="mb-3 flex items-start justify-between gap-3">
+                                <span className="rounded-full border border-violet-200 bg-violet-100 px-3 py-1 text-xs font-medium text-violet-700">
+                                  offer
+                                </span>
+                                <span className="text-sm font-medium text-zinc-600">
+                                  Score {match.matchScore}
+                                </span>
+                              </div>
+
+                              <div className="space-y-3">
+                                <p className="text-xl font-medium leading-8 text-zinc-950">
+                                  {match.summary || match.raw_text}
+                                </p>
+
+                                <div className="flex flex-wrap gap-2">
+                                  {match.category && <Badge>{match.category}</Badge>}
+                                  {match.support_mode && (
+                                    <Badge>
+                                      {match.support_mode === "in_person"
+                                        ? "In person"
+                                        : match.support_mode}
+                                    </Badge>
+                                  )}
+                                  {match.location_text && (
+                                    <Badge>{match.location_text}</Badge>
+                                  )}
+                                </div>
+
+                                <p className="text-sm leading-7 text-zinc-600">
+                                  {match.matchReason}
+                                </p>
+
+                                <p className="text-xs text-zinc-500">
+                                  {(match.priority || "low") + " • " + match.scoreSource}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                 </div>
-              )}
-          </Card>
-        ))}
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     </main>
   );

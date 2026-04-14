@@ -1,26 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { sdk } from "@farcaster/miniapp-sdk";
 import { useMiniApp } from "@neynar/react";
 import Card from "@/components/Card";
 
-type AnalysisResult = {
-  category: string;
-  priority: "low" | "medium" | "high";
-  summary: string;
-  source: "llm" | "fallback";
-};
+type SupportMode = "online" | "in_person" | "both";
+type EntryType = "request" | "offer";
 
 export default function SubmitPage() {
   const { context } = useMiniApp();
 
-  const [text, setText] = useState("");
-  const [type, setType] = useState<"request" | "offer">("request");
-  const [supportMode, setSupportMode] = useState<"online" | "in_person" | "both">("online");
+  const [type, setType] = useState<EntryType>("request");
+  const [supportMode, setSupportMode] = useState<SupportMode>("online");
   const [locationText, setLocationText] = useState("");
+  const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    sdk.actions.ready().catch(console.error);
+  }, []);
 
   const handleSubmit = async () => {
     if (!text.trim()) {
@@ -28,15 +28,17 @@ export default function SubmitPage() {
       return;
     }
 
-     if (!context?.user?.fid) {
-        setMessage("Open AIdCast inside Farcaster to submit authenticated requests and offers.");
-        return;
-     }
+    if (!context?.user?.fid) {
+      setMessage(
+        "Open AIdCast inside Farcaster to submit authenticated requests and offers."
+      );
+      return;
+    }
+
+    setLoading(true);
+    setMessage("");
 
     try {
-      setLoading(true);
-      setMessage("");
-
       const analyzeRes = await fetch("/api/analyze", {
         method: "POST",
         headers: {
@@ -45,15 +47,17 @@ export default function SubmitPage() {
         body: JSON.stringify({ text: text.trim() }),
       });
 
+      const analyzeJson = await analyzeRes.json();
+
       if (!analyzeRes.ok) {
-        throw new Error("Failed to analyze entry");
+        setMessage(analyzeJson?.error || "Analysis failed.");
+        setLoading(false);
+        return;
       }
 
-      const analysis = (await analyzeRes.json()) as AnalysisResult;
-      console.log("Mini app context user:", context?.user);
-      console.log("About to call sdk.quickAuth.fetch");
+      const { category, priority, summary } = analyzeJson;
 
-      const saveRes = await sdk.quickAuth.fetch("/api/entries", {
+      const entriesRes = await sdk.quickAuth.fetch("/api/entries", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -61,82 +65,86 @@ export default function SubmitPage() {
         body: JSON.stringify({
           type,
           raw_text: text.trim(),
-          category: analysis.category,
-          priority: analysis.priority,
-          summary: analysis.summary,
-          status: "open",
+          category,
+          priority,
+          summary,
           support_mode: supportMode,
           location_text: locationText.trim() || null,
-          username: context?.user?.username || null,
-          display_name: context?.user?.displayName || null,
-          pfp_url: context?.user?.pfpUrl || null,
         }),
       });
 
-      if (!saveRes.ok) {
-        const err = await saveRes.json().catch(() => null);
-        throw new Error(err?.error || "Failed to save entry");
+      const entriesJson = await entriesRes.json();
+
+      if (!entriesRes.ok) {
+        setMessage(
+          entriesJson?.error || "Unexpected error while saving entry."
+        );
+        setLoading(false);
+        return;
       }
 
-      setMessage(`Saved successfully with ${analysis.source.toUpperCase()} analysis.`);
+      setMessage("Saved successfully with LLM analysis.");
       setText("");
+      setLocationText("");
       setType("request");
       setSupportMode("online");
-      setLocationText("");
     } catch (err) {
-    console.error("Submit error:", err);
-    setMessage(
-        err instanceof Error ? err.message : "Unexpected error while saving entry."
-    );
-    } finally {
-      setLoading(false);
+      console.error("Submit error:", err);
+      setMessage(
+        err instanceof Error
+          ? err.message
+          : "Unexpected error while saving entry."
+      );
     }
+
+    setLoading(false);
   };
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-blue-50 via-white to-violet-50 px-4 py-6">
-      <div className="pointer-events-none absolute inset-0 opacity-5 bg-[url('/splash.png')] bg-cover bg-center" />
-      <div className="relative mx-auto max-w-md">
-        <div className="mb-5">
-          <div className="mb-2">
-            <a href="/" className="text-sm text-zinc-500 hover:text-zinc-800">
-              ← Back home
-            </a>
-          </div>
+    <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-blue-100 via-slate-50 to-violet-100 px-4 py-6">
+      <div className="pointer-events-none absolute inset-0 opacity-[0.08] bg-[url('/og-image.png')] bg-cover bg-center" />
+      <div className="pointer-events-none absolute inset-0 bg-white/35" />
 
-          <h1 className="text-center text-3xl font-bold tracking-tight text-zinc-900">
+      <div className="relative mx-auto flex max-w-md flex-col gap-4">
+        <a href="/" className="text-sm text-zinc-600 hover:text-zinc-900">
+          ← Back home
+        </a>
+
+        <div className="space-y-2 text-center">
+          <h1 className="text-4xl font-bold tracking-tight text-zinc-950">
             Submit
           </h1>
-          <p className="mt-2 text-center text-sm text-zinc-600">
-            Create a request if you need help, or an offer if you can support someone.
+          <p className="text-base leading-7 text-zinc-700">
+            Create a request if you need help, or an offer if you can support
+            someone.
           </p>
         </div>
 
-        <Card className="p-5 shadow-xl">
-          <div className="space-y-5">
-            <div>
-              <label className="mb-2 block text-sm font-medium text-zinc-800">
-                Type
-              </label>
+        <Card className="rounded-3xl border border-black/15 bg-white/85 p-5 shadow-md backdrop-blur-md">
+          <div className="space-y-6">
+            <div className="space-y-3">
+              <p className="text-lg font-medium text-zinc-900">Type</p>
+
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setType("request")}
-                  className={`rounded-xl px-4 py-3 text-sm font-medium border transition ${
+                  className={`rounded-2xl border px-4 py-3 text-sm font-medium transition ${
                     type === "request"
-                      ? "bg-blue-600 text-white border-blue-600"
-                      : "bg-white text-zinc-800 border-zinc-300"
+                      ? "border-blue-600 bg-blue-600 text-white"
+                      : "border-zinc-300 bg-white text-zinc-900"
                   }`}
                 >
                   Request
                 </button>
+
                 <button
                   type="button"
                   onClick={() => setType("offer")}
-                  className={`rounded-xl px-4 py-3 text-sm font-medium border transition ${
+                  className={`rounded-2xl border px-4 py-3 text-sm font-medium transition ${
                     type === "offer"
-                      ? "bg-emerald-600 text-white border-emerald-600"
-                      : "bg-white text-zinc-800 border-zinc-300"
+                      ? "border-blue-600 bg-blue-600 text-white"
+                      : "border-zinc-300 bg-white text-zinc-900"
                   }`}
                 >
                   Offer
@@ -144,60 +152,54 @@ export default function SubmitPage() {
               </div>
             </div>
 
-            <div>
-              <label className="mb-2 block text-sm font-medium text-zinc-800">
-                Support mode
-              </label>
+            <div className="space-y-3">
+              <p className="text-lg font-medium text-zinc-900">Support mode</p>
+
               <div className="grid grid-cols-3 gap-2">
-                {["online", "in_person", "both"].map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => setSupportMode(mode as "online" | "in_person" | "both")}
-                    className={`rounded-xl px-3 py-3 text-sm font-medium border transition ${
-                      supportMode === mode
-                        ? "bg-zinc-900 text-white border-zinc-900"
-                        : "bg-white text-zinc-800 border-zinc-300"
-                    }`}
-                  >
-                    {mode === "online"
-                      ? "Online"
-                      : mode === "in_person"
-                      ? "In person"
-                      : "Both"}
-                  </button>
-                ))}
+                {(["online", "in_person", "both"] as SupportMode[]).map(
+                  (mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setSupportMode(mode)}
+                      className={`rounded-2xl border px-3 py-3 text-sm font-medium capitalize transition ${
+                        supportMode === mode
+                          ? "border-zinc-900 bg-zinc-900 text-white"
+                          : "border-zinc-300 bg-white text-zinc-900"
+                      }`}
+                    >
+                      {mode === "in_person" ? "In person" : mode}
+                    </button>
+                  )
+                )}
               </div>
             </div>
 
-            <div>
-              <label className="mb-2 block text-sm font-medium text-zinc-800">
+            <div className="space-y-3">
+              <label className="text-lg font-medium text-zinc-900">
                 Location
               </label>
               <input
                 value={locationText}
                 onChange={(e) => setLocationText(e.target.value)}
                 placeholder="Example: Milan, Italy"
-                className="w-full rounded-2xl border border-zinc-300 bg-white px-4 py-3 text-sm text-zinc-900 placeholder:text-zinc-500 outline-none"
+                className="w-full rounded-2xl border border-zinc-300 bg-white px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500"
               />
-              <p className="mt-2 text-xs text-zinc-500">
+              <p className="text-sm text-zinc-500">
                 Optional. Useful for in-person support or hybrid requests.
               </p>
             </div>
 
-            <div>
-              <label className="mb-2 block text-sm font-medium text-zinc-800">
+            <div className="space-y-3">
+              <label className="text-lg font-medium text-zinc-900">
                 Description
               </label>
               <textarea
                 value={text}
                 onChange={(e) => setText(e.target.value)}
-                placeholder={
-                  type === "request"
-                    ? "Example: I need help translating legal documents into English by tomorrow."
-                    : "Example: I can help with React and Next.js development."
-                }
-                className="min-h-[160px] w-full rounded-2xl border border-zinc-300 bg-white p-4 text-sm text-zinc-900 outline-none placeholder:text-zinc-500"
+                placeholder="Example: I need help translating legal documents into English by tomorrow."
+                rows={6}
+                className="w-full rounded-2xl border border-zinc-300 bg-white px-4 py-3 text-sm leading-7 text-zinc-900 outline-none transition focus:border-zinc-500"
               />
             </div>
 
@@ -205,13 +207,13 @@ export default function SubmitPage() {
               type="button"
               onClick={handleSubmit}
               disabled={loading}
-              className="w-full rounded-2xl bg-black px-4 py-3 text-sm font-medium text-white disabled:opacity-50"
+              className="w-full rounded-2xl border border-black bg-black px-4 py-3 text-sm font-medium text-white shadow-sm transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {loading ? "Analyzing..." : "Submit"}
+              {loading ? "Submitting..." : "Submit"}
             </button>
 
             {message && (
-              <div className="rounded-xl bg-zinc-100 px-3 py-3 text-sm text-zinc-700">
+              <div className="rounded-2xl border border-black/10 bg-zinc-50 px-4 py-3 text-sm leading-6 text-zinc-700">
                 {message}
               </div>
             )}

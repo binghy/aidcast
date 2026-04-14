@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { quickAuthClient } from "@/lib/quick-auth";
 import { createClient } from "@supabase/supabase-js";
+import { recomputeMatchNotifications } from "@/lib/recompute-match-notifications";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -71,6 +72,16 @@ export async function POST(req: NextRequest) {
         { error: error.message },
         { status: 400 }
       );
+    }
+
+    // After saving, we recalculate the matches and notify you.
+    // For efficiency, recalculation is limited to the same category as the new entry.
+    try {
+      await recomputeMatchNotifications({
+        onlyCategory: category || null,
+      });
+    } catch (notifyError) {
+      console.error("Post-insert notification recompute error:", notifyError);
     }
 
     return NextResponse.json({ ok: true, fid });

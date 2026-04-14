@@ -25,6 +25,7 @@ export type MatchEvaluation = {
     location: number;
     supportMode: number;
     intent: number;
+    economicAdvantage: number;
   };
 };
 
@@ -121,10 +122,11 @@ function inferOfferUrgency(text: string) {
     normalized.includes("immediately") ||
     normalized.includes("urgent") ||
     normalized.includes("available now") ||
+    normalized.includes("immediate") ||
     normalized.includes("can give immediately") ||
     normalized.includes("can help immediately")
   ) {
-    return 10;
+    return 14;
   }
 
   if (
@@ -132,7 +134,7 @@ function inferOfferUrgency(text: string) {
     normalized.includes("asap") ||
     normalized.includes("soon")
   ) {
-    return 6;
+    return 8;
   }
 
   return 0;
@@ -162,19 +164,19 @@ function categoryKind(category: string | null) {
 function inferIntent(text: string) {
   const t = normalizeText(text);
 
-  if (t.includes("loan") || t.includes("rent") || t.includes("borrow")) {
+  if (t.includes("loan") || t.includes("lend") || t.includes("rent") || t.includes("borrow")) {
     return "loan";
   }
 
-  if (t.includes("give") || t.includes("provide")) {
+  if (t.includes("give") || t.includes("provide") || t.includes("give away")) {
     return "give";
   }
 
-  if (t.includes("help") || t.includes("assist")) {
+  if (t.includes("help") || t.includes("assist") || t.includes("support")) {
     return "help";
   }
 
-  if (t.includes("explain") || t.includes("teach") || t.includes("tutor")) {
+  if (t.includes("explain") || t.includes("teach") || t.includes("tutor") || t.includes("review")) {
     return "explain";
   }
 
@@ -308,6 +310,135 @@ function locationCompatibility(request: EntryLike, offer: EntryLike) {
   };
 }
 
+function getIntentScore(
+  request: EntryLike,
+  requestIntent: string,
+  offerIntent: string
+) {
+  const kind = categoryKind(request.category);
+
+  if (kind === "object") {
+    // Per gli oggetti, loan e give sono entrambi fortemente compatibili.
+    if (
+      (requestIntent === "loan" && offerIntent === "loan") ||
+      (requestIntent === "loan" && offerIntent === "give") ||
+      (requestIntent === "give" && offerIntent === "loan") ||
+      (requestIntent === "give" && offerIntent === "give")
+    ) {
+      return 8;
+    }
+
+    if (offerIntent === "generic") {
+      return 4;
+    }
+
+    return 2;
+  }
+
+  // services
+  if (requestIntent === offerIntent) {
+    return 12;
+  }
+
+  if (
+    (requestIntent === "help" && offerIntent === "explain") ||
+    (requestIntent === "explain" && offerIntent === "help")
+  ) {
+    return 8;
+  }
+
+  if (offerIntent === "generic") {
+    return 4;
+  }
+
+  return 2;
+}
+
+function requestShowsWillingnessToPay(text: string) {
+  const t = normalizeText(text);
+
+  return (
+    t.includes("pay") ||
+    t.includes("paid") ||
+    t.includes("bucks") ||
+    t.includes("dollar") ||
+    t.includes("dollars") ||
+    t.includes("eur") ||
+    t.includes("euro") ||
+    t.includes("euros") ||
+    t.includes("fee") ||
+    t.includes("budget") ||
+    t.includes("$") ||
+    t.includes("€") ||
+    t.includes("rent")
+  );
+}
+
+function offerLooksFreeOrEconomical(text: string) {
+  const t = normalizeText(text);
+
+  if (
+    t.includes("for free") ||
+    t.includes("free") ||
+    t.includes("no charge") ||
+    t.includes("without payment") ||
+    t.includes("no fee") ||
+    t.includes("give away") ||
+    t.includes("you can keep it")
+  ) {
+    return "explicit_free";
+  }
+
+  if (
+    t.includes("give") ||
+    t.includes("lend") ||
+    t.includes("loan")
+  ) {
+    return "implicit_economical";
+  }
+
+  return "neutral";
+}
+
+function getEconomicAdvantageScore(
+  request: EntryLike,
+  offer: EntryLike,
+  requestIntent: string,
+  offerIntent: string
+) {
+  const kind = categoryKind(request.category);
+  const requestText = request.summary || request.raw_text;
+  const offerText = offer.summary || offer.raw_text;
+
+  const requestWillingToPay = requestShowsWillingnessToPay(requestText);
+  const offerEconomicSignal = offerLooksFreeOrEconomical(offerText);
+
+  // Oggetti / strumenti
+  if (kind === "object") {
+    // Se il richiedente vuole borrow/rent e l'offer è give, c'è vantaggio economico.
+    if (requestIntent === "loan" && offerIntent === "give") {
+      return 6;
+    }
+
+    if (offerEconomicSignal === "explicit_free") {
+      return 8;
+    }
+
+    if (requestWillingToPay && offerEconomicSignal === "implicit_economical") {
+      return 4;
+    }
+
+    return 0;
+  }
+
+  // Servizi
+  if (requestWillingToPay && offerEconomicSignal === "explicit_free") {
+    return 8;
+  }
+
+  return 0;
+}
+
 export function evaluateOfferForRequest(
   request: EntryLike,
   offer: EntryLike
@@ -326,6 +457,7 @@ export function evaluateOfferForRequest(
         location: 0,
         supportMode: 0,
         intent: 0,
+        economicAdvantage: 0,
       },
     };
   }
@@ -345,6 +477,7 @@ export function evaluateOfferForRequest(
         location: 0,
         supportMode: 0,
         intent: 0,
+        economicAdvantage: 0,
       },
     };
   }
@@ -364,6 +497,7 @@ export function evaluateOfferForRequest(
         location: 0,
         supportMode: support.score,
         intent: 0,
+        economicAdvantage: 0,
       },
     };
   }
@@ -381,19 +515,14 @@ export function evaluateOfferForRequest(
 
   const requestIntent = inferIntent(requestText);
   const offerIntent = inferIntent(offerText);
+  const intentScore = getIntentScore(request, requestIntent, offerIntent);
 
-  let intentScore = 0;
-
-  if (requestIntent === offerIntent) {
-    intentScore = 12;
-  } else if (
-    (requestIntent === "loan" && offerIntent === "give") ||
-    (requestIntent === "give" && offerIntent === "loan")
-  ) {
-    intentScore = 8;
-  } else {
-    intentScore = 2;
-  }
+  const economicAdvantageScore = getEconomicAdvantageScore(
+    request,
+    offer,
+    requestIntent,
+    offerIntent
+  );
 
   const score =
     categoryScore +
@@ -403,11 +532,13 @@ export function evaluateOfferForRequest(
     recencyScore +
     location.score +
     support.score +
-    intentScore;
+    intentScore +
+    economicAdvantageScore;
 
   const reasons = [
     "same category",
     requestIntent === offerIntent ? `same intent: ${requestIntent}` : null,
+    economicAdvantageScore > 0 ? "economically advantageous for requester" : null,
     commonWords.length > 0 ? `shared words: ${commonWords.slice(0, 4).join(", ")}` : null,
     request.priority ? `request priority: ${request.priority}` : null,
     offerUrgencyScore > 0 ? "offer indicates immediate availability" : null,
@@ -429,6 +560,7 @@ export function evaluateOfferForRequest(
       location: location.score,
       supportMode: support.score,
       intent: intentScore,
+      economicAdvantage: economicAdvantageScore,
     },
   };
 }

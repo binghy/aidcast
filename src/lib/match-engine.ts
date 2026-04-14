@@ -171,11 +171,22 @@ function categoryKind(category: string | null) {
 function inferIntent(text: string) {
   const t = normalizeText(text);
 
-  if (t.includes("loan") || t.includes("lend") || t.includes("rent") || t.includes("borrow")) {
+  if (
+    t.includes("loan") ||
+    t.includes("lend") ||
+    t.includes("rent") ||
+    t.includes("borrow")
+  ) {
     return "loan";
   }
 
-  if (t.includes("give") || t.includes("provide") || t.includes("give away")) {
+  if (
+    t.includes("give") ||
+    t.includes("provide") ||
+    t.includes("give away") ||
+    t.includes("offered for free") ||
+    t.includes("free offered")
+  ) {
     return "give";
   }
 
@@ -183,7 +194,12 @@ function inferIntent(text: string) {
     return "help";
   }
 
-  if (t.includes("explain") || t.includes("teach") || t.includes("tutor") || t.includes("review")) {
+  if (
+    t.includes("explain") ||
+    t.includes("teach") ||
+    t.includes("tutor") ||
+    t.includes("review")
+  ) {
     return "explain";
   }
 
@@ -419,11 +435,11 @@ function getEconomicAdvantageScore(
   const offerEconomicSignal = offerLooksFreeOrEconomical(offerText);
 
   if (kind === "object") {
-    if (requestIntent === "loan" && offerIntent === "give") {
-      return 6;
+    if (offerEconomicSignal === "explicit_free") {
+      return 14;
     }
 
-    if (offerEconomicSignal === "explicit_free") {
+    if (requestIntent === "loan" && offerIntent === "give") {
       return 8;
     }
 

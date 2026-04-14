@@ -38,8 +38,9 @@ function typeBadgeClass(type: Entry["type"]) {
 
 function priorityBadgeClass(priority: string | null) {
   if (priority === "high") return "bg-red-100 text-red-700 border-red-200";
-  if (priority === "medium")
+  if (priority === "medium") {
     return "bg-amber-100 text-amber-700 border-amber-200";
+  }
   return "bg-sky-100 text-sky-700 border-sky-200";
 }
 
@@ -52,29 +53,80 @@ export default function BoardPage() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [matchesMap, setMatchesMap] = useState<Record<number, ScoredMatch[]>>({});
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
-    const fetchEntries = async () => {
+    let isMounted = true;
+
+    async function fetchEntries() {
       setLoading(true);
+      setErrorMessage("");
 
-      const res = await fetch("/api/board");
-      const json = await res.json();
+      try {
+        const res = await fetch("/api/board", {
+          method: "GET",
+          cache: "no-store",
+        });
 
-      const fetchedEntries = (json?.entries || []) as Entry[];
-      setEntries(fetchedEntries);
+        if (!res.ok) {
+          throw new Error(`Board fetch failed with status ${res.status}`);
+        }
 
-      const requestEntries = fetchedEntries.filter((e) => e.type === "request");
-      const matches: Record<number, ScoredMatch[]> = {};
+        const json = await res.json();
+        const fetchedEntries = (json?.entries || []) as Entry[];
 
-      for (const request of requestEntries) {
-        matches[request.id] = await findMatchesForRequest(request, 3);
+        if (!isMounted) return;
+
+        setEntries(fetchedEntries);
+
+        const requestEntries = fetchedEntries.filter(
+          (e) => e.type === "request" && e.status === "open"
+        );
+
+        const settled = await Promise.allSettled(
+          requestEntries.map(async (request) => {
+            const matches = await findMatchesForRequest(request, 3);
+            return { requestId: request.id, matches };
+          })
+        );
+
+        if (!isMounted) return;
+
+        const nextMatchesMap: Record<number, ScoredMatch[]> = {};
+
+        for (const result of settled) {
+          if (result.status === "fulfilled") {
+            nextMatchesMap[result.value.requestId] = result.value.matches;
+          } else {
+            console.error("Board match computation error:", result.reason);
+          }
+        }
+
+        setMatchesMap(nextMatchesMap);
+      } catch (error) {
+        console.error("Board page error:", error);
+
+        if (!isMounted) return;
+
+        setEntries([]);
+        setMatchesMap({});
+        setErrorMessage(
+          error instanceof Error
+            ? error.message
+            : "Unexpected error while loading the board."
+        );
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
       }
-
-      setMatchesMap(matches);
-      setLoading(false);
-    };
+    }
 
     fetchEntries();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   return (
@@ -100,6 +152,10 @@ export default function BoardPage() {
         {loading ? (
           <Card className="rounded-3xl border border-black/10 bg-white/85 p-5 shadow-md backdrop-blur-md">
             <p className="text-sm text-zinc-600">Loading board...</p>
+          </Card>
+        ) : errorMessage ? (
+          <Card className="rounded-3xl border border-red-200 bg-red-50/90 p-5 shadow-md backdrop-blur-md">
+            <p className="text-sm text-red-700">{errorMessage}</p>
           </Card>
         ) : entries.length === 0 ? (
           <Card className="rounded-3xl border border-black/10 bg-white/85 p-5 shadow-md backdrop-blur-md">
@@ -151,9 +207,7 @@ export default function BoardPage() {
                     </h2>
 
                     <div className="flex flex-wrap gap-2">
-                      {entry.category && (
-                        <Badge>{entry.category}</Badge>
-                      )}
+                      {entry.category && <Badge>{entry.category}</Badge>}
 
                       {entry.support_mode && (
                         <Badge>
@@ -215,7 +269,9 @@ export default function BoardPage() {
                                 </p>
 
                                 <p className="text-xs text-zinc-500">
-                                  {(match.priority || "low") + " • " + match.scoreSource}
+                                  {(match.priority || "low") +
+                                    " • " +
+                                    match.scoreSource}
                                 </p>
                               </div>
                             </div>

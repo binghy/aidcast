@@ -49,6 +49,17 @@ function statusBadgeClass(status: string | null) {
   return "bg-emerald-100 text-emerald-700 border-emerald-200";
 }
 
+function entrySortScore(entry: Entry, matchesMap: Record<number, ScoredMatch[]>) {
+  const isOpen = entry.status === "open";
+  const isRequest = entry.type === "request";
+  const hasMatches = isRequest && (matchesMap[entry.id]?.length || 0) > 0;
+
+  if (isOpen && isRequest && hasMatches) return 0;
+  if (isOpen && isRequest) return 1;
+  if (isOpen && entry.type === "offer") return 2;
+  return 3;
+}
+
 export default function BoardPage() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [matchesMap, setMatchesMap] = useState<Record<number, ScoredMatch[]>>({});
@@ -77,8 +88,6 @@ export default function BoardPage() {
 
         if (!isMounted) return;
 
-        setEntries(fetchedEntries);
-
         const requestEntries = fetchedEntries.filter(
           (e) => e.type === "request" && e.status === "open"
         );
@@ -102,6 +111,19 @@ export default function BoardPage() {
           }
         }
 
+        const sortedEntries = [...fetchedEntries].sort((a, b) => {
+          const aGroup = entrySortScore(a, nextMatchesMap);
+          const bGroup = entrySortScore(b, nextMatchesMap);
+
+          if (aGroup !== bGroup) return aGroup - bGroup;
+
+          const aTime = new Date(a.created_at).getTime();
+          const bTime = new Date(b.created_at).getTime();
+
+          return bTime - aTime;
+        });
+
+        setEntries(sortedEntries);
         setMatchesMap(nextMatchesMap);
       } catch (error) {
         console.error("Board page error:", error);
@@ -131,7 +153,7 @@ export default function BoardPage() {
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-blue-100 via-slate-50 to-violet-100 px-4 py-6">
-      <div className="pointer-events-none absolute inset-0 opacity-[0.08] bg-[url('/og-image.png')] bg-cover bg-center" />
+      <div className="pointer-events-none absolute inset-0 opacity-[0.08] bg-[url('/og-image-v2.png')] bg-cover bg-center" />
       <div className="pointer-events-none absolute inset-0 bg-white/35" />
 
       <div className="relative mx-auto flex max-w-md flex-col gap-4">
@@ -140,10 +162,10 @@ export default function BoardPage() {
         </a>
 
         <div className="space-y-2 text-center">
-          <h1 className="text-4xl font-bold tracking-tight text-zinc-950">
+          <h1 className="text-3xl font-bold tracking-tight text-zinc-950">
             Community Board
           </h1>
-          <p className="text-base leading-7 text-zinc-700">
+          <p className="text-sm leading-6 text-zinc-700">
             Open requests and offers, ranked by AI and enriched with support mode
             and location.
           </p>
@@ -202,7 +224,7 @@ export default function BoardPage() {
                   </div>
 
                   <div className="space-y-3">
-                    <h2 className="text-2xl font-semibold leading-9 text-zinc-950">
+                    <h2 className="text-xl font-semibold leading-8 text-zinc-950">
                       {entry.summary || entry.raw_text}
                     </h2>
 
@@ -226,7 +248,7 @@ export default function BoardPage() {
                     matchesMap[entry.id] &&
                     matchesMap[entry.id].length > 0 && (
                       <div className="space-y-4 border-t border-black/10 pt-4">
-                        <h3 className="text-lg font-semibold text-zinc-900">
+                        <h3 className="text-base font-semibold text-zinc-900">
                           Best matches
                         </h3>
 
@@ -246,7 +268,7 @@ export default function BoardPage() {
                               </div>
 
                               <div className="space-y-3">
-                                <p className="text-xl font-medium leading-8 text-zinc-950">
+                                <p className="text-lg font-medium leading-7 text-zinc-950">
                                   {match.summary || match.raw_text}
                                 </p>
 

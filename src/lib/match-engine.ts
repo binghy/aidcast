@@ -26,6 +26,7 @@ export type MatchEvaluation = {
     supportMode: number;
     intent: number;
     economicAdvantage: number;
+    specificity: number;
   };
 };
 
@@ -61,6 +62,12 @@ const STOPWORDS = new Set([
   "our",
   "need",
   "needs",
+  "looking",
+  "someone",
+  "something",
+  "want",
+  "wants",
+  "able",
 ]);
 
 function normalizeText(text: string) {
@@ -318,7 +325,6 @@ function getIntentScore(
   const kind = categoryKind(request.category);
 
   if (kind === "object") {
-    // Per gli oggetti, loan e give sono entrambi fortemente compatibili.
     if (
       (requestIntent === "loan" && offerIntent === "loan") ||
       (requestIntent === "loan" && offerIntent === "give") ||
@@ -335,7 +341,6 @@ function getIntentScore(
     return 2;
   }
 
-  // services
   if (requestIntent === offerIntent) {
     return 12;
   }
@@ -413,9 +418,7 @@ function getEconomicAdvantageScore(
   const requestWillingToPay = requestShowsWillingnessToPay(requestText);
   const offerEconomicSignal = offerLooksFreeOrEconomical(offerText);
 
-  // Oggetti / strumenti
   if (kind === "object") {
-    // Se il richiedente vuole borrow/rent e l'offer è give, c'è vantaggio economico.
     if (requestIntent === "loan" && offerIntent === "give") {
       return 6;
     }
@@ -431,11 +434,34 @@ function getEconomicAdvantageScore(
     return 0;
   }
 
-  // Servizi
   if (requestWillingToPay && offerEconomicSignal === "explicit_free") {
     return 8;
   }
 
+  return 0;
+}
+
+function getSpecificityScore(request: EntryLike, offer: EntryLike) {
+  const requestText = request.summary || request.raw_text;
+  const offerText = offer.summary || offer.raw_text;
+
+  const requestWords = uniqueWords(tokenize(requestText));
+  const offerWords = uniqueWords(tokenize(offerText));
+  const commonWords = requestWords.filter((word) => offerWords.includes(word));
+
+  const kind = categoryKind(request.category);
+
+  if (kind === "object") {
+    if (commonWords.length >= 3) return 10;
+    if (commonWords.length === 2) return 7;
+    if (commonWords.length === 1) return 4;
+    return 0;
+  }
+
+  if (commonWords.length >= 4) return 10;
+  if (commonWords.length === 3) return 7;
+  if (commonWords.length === 2) return 4;
+  if (commonWords.length === 1) return 2;
   return 0;
 }
 
@@ -458,6 +484,7 @@ export function evaluateOfferForRequest(
         supportMode: 0,
         intent: 0,
         economicAdvantage: 0,
+        specificity: 0,
       },
     };
   }
@@ -478,6 +505,7 @@ export function evaluateOfferForRequest(
         supportMode: 0,
         intent: 0,
         economicAdvantage: 0,
+        specificity: 0,
       },
     };
   }
@@ -498,6 +526,7 @@ export function evaluateOfferForRequest(
         supportMode: support.score,
         intent: 0,
         economicAdvantage: 0,
+        specificity: 0,
       },
     };
   }
@@ -524,6 +553,8 @@ export function evaluateOfferForRequest(
     offerIntent
   );
 
+  const specificityScore = getSpecificityScore(request, offer);
+
   const score =
     categoryScore +
     textOverlapScore +
@@ -533,12 +564,14 @@ export function evaluateOfferForRequest(
     location.score +
     support.score +
     intentScore +
-    economicAdvantageScore;
+    economicAdvantageScore +
+    specificityScore;
 
   const reasons = [
     "same category",
     requestIntent === offerIntent ? `same intent: ${requestIntent}` : null,
     economicAdvantageScore > 0 ? "economically advantageous for requester" : null,
+    specificityScore > 0 ? "specific offer/request overlap" : null,
     commonWords.length > 0 ? `shared words: ${commonWords.slice(0, 4).join(", ")}` : null,
     request.priority ? `request priority: ${request.priority}` : null,
     offerUrgencyScore > 0 ? "offer indicates immediate availability" : null,
@@ -561,6 +594,7 @@ export function evaluateOfferForRequest(
       supportMode: support.score,
       intent: intentScore,
       economicAdvantage: economicAdvantageScore,
+      specificity: specificityScore,
     },
   };
 }

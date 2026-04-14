@@ -9,13 +9,14 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@farcaster/miniapp-node": "^0.2.0",
     "@farcaster/miniapp-sdk": "^0.3.0",
     "@farcaster/quick-auth": "^0.0.8",
     "@neynar/react": "^1.2.22",
     "@pigment-css/react": "^0.0.30",
     "@supabase/supabase-js": "^2.101.1",
     "hls.js": "^1.5.20",
-    "next": "16.2.2",
+    "next": "^16.2.3",
     "openai": "^6.33.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",

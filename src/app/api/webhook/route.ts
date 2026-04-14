@@ -1,106 +1,178 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  ParseWebhookEvent,
+  parseWebhookEvent,
+  verifyAppKeyWithNeynar,
+} from "@farcaster/miniapp-node";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-function decodeBase64Url(input: string) {
-  const base64 = input.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
-  return Buffer.from(padded, "base64").toString("utf8");
-}
+export async function POST(request: NextRequest) {
+  const requestJson = await request.json();
 
-export async function POST(req: NextRequest) {
+  console.log("Webhook raw envelope:", JSON.stringify(requestJson, null, 2));
+
+  let data: Awaited<ReturnType<typeof parseWebhookEvent>>;
+
   try {
-    const body = await req.json();
+    data = await parseWebhookEvent(requestJson, verifyAppKeyWithNeynar);
+  } catch (e: unknown) {
+    const error = e as ParseWebhookEvent.ErrorType;
+    console.error("Webhook verification error:", error);
 
-    console.log("Webhook raw envelope:", JSON.stringify(body, null, 2));
+    switch (error.name) {
+      case "VerifyJsonFarcasterSignature.InvalidDataError":
+      case "VerifyJsonFarcasterSignature.InvalidEventDataError":
+        return NextResponse.json(
+          { success: false, error: error.message },
+          { status: 400 }
+        );
 
-    const header = body?.header;
-    const payloadEncoded = body?.payload;
-    const signature = body?.signature;
+      case "VerifyJsonFarcasterSignature.InvalidAppKeyError":
+        return NextResponse.json(
+          { success: false, error: error.message },
+          { status: 401 }
+        );
 
-    if (!header || !payloadEncoded || !signature) {
-      return NextResponse.json(
-        { error: "Invalid webhook envelope" },
-        { status: 400 }
-      );
+      case "VerifyJsonFarcasterSignature.VerifyAppKeyError":
+        return NextResponse.json(
+          { success: false, error: error.message },
+          { status: 500 }
+        );
+
+      default:
+        return NextResponse.json(
+          { success: false, error: "Unknown webhook verification error" },
+          { status: 500 }
+        );
+    }
+  }
+
+  console.log("Verified webhook event:", JSON.stringify(data, null, 2));
+
+  const fid = data.fid;
+  const event = data.event;
+
+  console.log("Verified fid:", fid);
+  console.log("Verified event name:", event.event);
+
+  switch (event.event) {
+    case "miniapp_added": {
+      if (event.notificationDetails) {
+        console.log("Saving notification details:", event.notificationDetails);
+
+        const { data: existing, error: selectError } = await supabase
+          .from("notification_subscriptions")
+          .select("id")
+          .eq("fid", fid)
+          .eq("notification_token", event.notificationDetails.token)
+          .maybeSingle();
+
+        if (selectError) {
+          console.error("Webhook select error:", selectError);
+          return NextResponse.json(
+            { success: false, error: selectError.message },
+            { status: 400 }
+          );
+        }
+
+        if (existing?.id) {
+          const { error: updateError } = await supabase
+            .from("notification_subscriptions")
+            .update({
+              notification_url: event.notificationDetails.url,
+              is_active: true,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", existing.id);
+
+          if (updateError) {
+            console.error("Webhook update error:", updateError);
+            return NextResponse.json(
+              { success: false, error: updateError.message },
+              { status: 400 }
+            );
+          }
+        } else {
+          const { error: insertError } = await supabase
+            .from("notification_subscriptions")
+            .insert([
+              {
+                fid,
+                notification_token: event.notificationDetails.token,
+                notification_url: event.notificationDetails.url,
+                is_active: true,
+                updated_at: new Date().toISOString(),
+              },
+            ]);
+
+          if (insertError) {
+            console.error("Webhook insert error:", insertError);
+            return NextResponse.json(
+              { success: false, error: insertError.message },
+              { status: 400 }
+            );
+          }
+        }
+      } else {
+        // App aggiunta ma senza notifiche abilitate/token disponibile
+        const { error: disableError } = await supabase
+          .from("notification_subscriptions")
+          .update({
+            is_active: false,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("fid", fid);
+
+        if (disableError) {
+          console.error("Webhook disable-on-add error:", disableError);
+        }
+      }
+
+      break;
     }
 
-    const decodedPayloadString = decodeBase64Url(payloadEncoded);
-    const payload = JSON.parse(decodedPayloadString);
+    case "miniapp_removed": {
+      const { error: disableError } = await supabase
+        .from("notification_subscriptions")
+        .update({
+          is_active: false,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("fid", fid);
 
-    console.log("Webhook decoded payload:", JSON.stringify(payload, null, 2));
-    console.log("Webhook eventType:", payload?.event);
-    console.log(
-      "Webhook fid candidates:",
-      payload?.fid,
-      payload?.user?.fid,
-      payload?.data?.fid
-    );
-    console.log("Webhook notificationDetails:", payload?.notificationDetails);
+      if (disableError) {
+        console.error("Webhook disable error:", disableError);
+      }
 
-    const eventType =
-      payload?.event ||
-      payload?.type ||
-      payload?.eventType ||
-      null;
+      break;
+    }
 
-    const fid =
-      payload?.fid ??
-      payload?.user?.fid ??
-      payload?.data?.fid ??
-      null;
-
-    const notificationDetails =
-      payload?.notificationDetails ??
-      payload?.data?.notificationDetails ??
-      null;
-
-    const token =
-      notificationDetails?.token ??
-      payload?.token ??
-      null;
-
-    const url =
-      notificationDetails?.url ??
-      payload?.url ??
-      null;
-
-    const client =
-      payload?.client ??
-      payload?.data?.client ??
-      null;
-
-    if (
-      (
-        eventType === "miniapp_added" ||
-        eventType === "notifications_enabled" ||
-        eventType === "frame_added"
-      ) &&
-      fid &&
-      token &&
-      url
-    ) {
+    case "notifications_enabled": {
       const { data: existing, error: selectError } = await supabase
         .from("notification_subscriptions")
         .select("id")
-        .eq("fid", Number(fid))
-        .eq("notification_token", token)
+        .eq("fid", fid)
+        .eq("notification_token", event.notificationDetails.token)
         .maybeSingle();
 
       if (selectError) {
         console.error("Webhook select error:", selectError);
+        return NextResponse.json(
+          { success: false, error: selectError.message },
+          { status: 400 }
+        );
       }
 
       if (existing?.id) {
         const { error: updateError } = await supabase
           .from("notification_subscriptions")
           .update({
-            notification_url: url,
-            client,
+            notification_url: event.notificationDetails.url,
             is_active: true,
             updated_at: new Date().toISOString(),
           })
@@ -109,7 +181,7 @@ export async function POST(req: NextRequest) {
         if (updateError) {
           console.error("Webhook update error:", updateError);
           return NextResponse.json(
-            { error: updateError.message },
+            { success: false, error: updateError.message },
             { status: 400 }
           );
         }
@@ -118,10 +190,9 @@ export async function POST(req: NextRequest) {
           .from("notification_subscriptions")
           .insert([
             {
-              fid: Number(fid),
-              notification_token: token,
-              notification_url: url,
-              client,
+              fid,
+              notification_token: event.notificationDetails.token,
+              notification_url: event.notificationDetails.url,
               is_active: true,
               updated_at: new Date().toISOString(),
             },
@@ -130,36 +201,31 @@ export async function POST(req: NextRequest) {
         if (insertError) {
           console.error("Webhook insert error:", insertError);
           return NextResponse.json(
-            { error: insertError.message },
+            { success: false, error: insertError.message },
             { status: 400 }
           );
         }
       }
+
+      break;
     }
 
-    if (
-      eventType === "miniapp_removed" ||
-      eventType === "notifications_disabled" ||
-      eventType === "frame_removed"
-    ) {
-      if (fid) {
-        const { error: disableError } = await supabase
-          .from("notification_subscriptions")
-          .update({
-            is_active: false,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("fid", Number(fid));
+    case "notifications_disabled": {
+      const { error: disableError } = await supabase
+        .from("notification_subscriptions")
+        .update({
+          is_active: false,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("fid", fid);
 
-        if (disableError) {
-          console.error("Webhook disable error:", disableError);
-        }
+      if (disableError) {
+        console.error("Webhook disable error:", disableError);
       }
-    }
 
-    return NextResponse.json({ ok: true });
-  } catch (error) {
-    console.error("Webhook route error:", error);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+      break;
+    }
   }
+
+  return NextResponse.json({ success: true });
 }

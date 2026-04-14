@@ -1,44 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
 import { sendNotificationToFid } from "@/lib/notifications";
+import { evaluateOfferForRequest } from "@/lib/match-engine";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-function extractCity(location: string | null): string | null {
-  if (!location) return null;
-  return location.split(",")[0]?.trim().toLowerCase() || null;
-}
-
-function locationBoost(request: any, offer: any) {
-  const requestMode = request.support_mode || "online";
-  const offerMode = offer.support_mode || "online";
-
-  const requestNeedsLocation =
-    requestMode === "in_person" || requestMode === "both";
-  const offerNeedsLocation =
-    offerMode === "in_person" || offerMode === "both";
-
-  if (!requestNeedsLocation && !offerNeedsLocation) return 0;
-
-  const requestCity = extractCity(request.location_text);
-  const offerCity = extractCity(offer.location_text);
-
-  if (requestCity && offerCity && requestCity === offerCity) return 12;
-  return 0;
-}
-
-function baseScore(request: any, offer: any) {
-  let score = 50;
-
-  if (offer.priority === "high") score += 15;
-  else if (offer.priority === "medium") score += 8;
-
-  score += locationBoost(request, offer);
-
-  return score;
-}
 
 export async function recomputeMatchNotifications(params?: {
   onlyCategory?: string | null;
@@ -65,14 +32,12 @@ export async function recomputeMatchNotifications(params?: {
   for (const request of requests || []) {
     if (!request.fid || !request.category) continue;
 
-    let offersQuery = supabase
+    const { data: offers, error: offerError } = await supabase
       .from("entries")
       .select("*")
       .eq("type", "offer")
       .eq("status", "open")
       .eq("category", request.category);
-
-    const { data: offers, error: offerError } = await offersQuery;
 
     if (offerError) {
       console.error("recomputeMatchNotifications offers error:", offerError);
@@ -80,10 +45,17 @@ export async function recomputeMatchNotifications(params?: {
     }
 
     const ranked = (offers || [])
-      .map((offer: any) => ({
-        ...offer,
-        computed_score: baseScore(request, offer),
-      }))
+      .map((offer: any) => {
+        const evaluation = evaluateOfferForRequest(request, offer);
+        if (!evaluation.isMatch) return null;
+
+        return {
+          ...offer,
+          computed_score: evaluation.score,
+          computed_reason: evaluation.reason,
+        };
+      })
+      .filter(Boolean)
       .sort((a: any, b: any) => b.computed_score - a.computed_score);
 
     const best = ranked[0];
@@ -102,7 +74,6 @@ export async function recomputeMatchNotifications(params?: {
 
     const targetUrl = "https://aidcast.vercel.app/board";
 
-    // Primo match
     if (!state) {
       await sendNotificationToFid({
         fid: request.fid,
@@ -133,7 +104,6 @@ export async function recomputeMatchNotifications(params?: {
       continue;
     }
 
-    // Match migliore
     if ((best.computed_score || 0) > (state.best_score || 0)) {
       await sendNotificationToFid({
         fid: request.fid,

@@ -45,8 +45,6 @@ export async function POST(req: NextRequest) {
       status,
       support_mode,
       location_text,
-      latitude,
-      longitude,
       username,
       display_name,
       pfp_url,
@@ -66,8 +64,6 @@ export async function POST(req: NextRequest) {
         status,
         support_mode,
         location_text,
-        latitude: typeof latitude === "number" ? latitude : null,
-        longitude: typeof longitude === "number" ? longitude : null,
       },
     ]);
 

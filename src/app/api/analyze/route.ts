@@ -7,7 +7,13 @@ type AnalyzeResult = {
   source: "llm" | "fallback";
 };
 
-function normalizeCategory(rawCategory: string, text: string) {
+type EntryKind = "service" | "object";
+
+function normalizeCategory(
+  rawCategory: string,
+  text: string,
+  entryKind: EntryKind
+) {
   const t = text.toLowerCase();
   const category = (rawCategory || "").toLowerCase().trim();
 
@@ -30,6 +36,13 @@ function normalizeCategory(rawCategory: string, text: string) {
     "bicycle pump",
   ];
 
+  if (entryKind === "object") {
+    if (logisticsKeywords.some((kw) => t.includes(kw))) {
+      return "logistics";
+    }
+    return "logistics";
+  }
+
   if (logisticsKeywords.some((kw) => t.includes(kw))) {
     return "logistics";
   }
@@ -43,15 +56,16 @@ function normalizeCategory(rawCategory: string, text: string) {
   return "other";
 }
 
-function fallbackAnalyze(text: string): AnalyzeResult {
+function fallbackAnalyze(text: string, entryKind: EntryKind): AnalyzeResult {
   const t = text.toLowerCase();
 
   let category = "other";
 
-  if (
+  if (entryKind === "object") {
+    category = "logistics";
+  } else if (
     t.includes("translate") ||
     t.includes("translation") ||
-    t.includes("document review in english") ||
     t.includes("localization")
   ) {
     category = "translation";
@@ -133,22 +147,25 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const text = body?.text?.trim();
+    const entryKind: EntryKind =
+      body?.entryKind === "object" ? "object" : "service";
 
     if (!text) {
-      return NextResponse.json(
-        { error: "Missing text" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing text" }, { status: 400 });
     }
 
     const apiKey = process.env.OPENROUTER_API_KEY;
-    const model =
-      process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini";
+    const model = process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini";
 
     if (!apiKey) {
-      const fallback = fallbackAnalyze(text);
+      const fallback = fallbackAnalyze(text, entryKind);
       return NextResponse.json(fallback);
     }
+
+    const categoryInstructions =
+      entryKind === "object"
+        ? "This entry is about a physical object, tool, or equipment. Prefer category logistics."
+        : "This entry is about a service such as tutoring, review, translation, coding, or legal support.";
 
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -167,8 +184,8 @@ export async function POST(req: NextRequest) {
               "You analyze a mutual-aid entry and return ONLY valid JSON. " +
               "Return keys: category, priority, summary. " +
               "Allowed categories: translation, mentoring, coding, legal, logistics, other. " +
-              "Use logistics for tools, objects, equipment, borrowing/lending/renting physical items. " +
-              "Priority must be low, medium, or high. " +
+              categoryInstructions +
+              " Priority must be low, medium, or high. " +
               "Summary must be short and clear in English.",
           },
           {
@@ -180,7 +197,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (!response.ok) {
-      const fallback = fallbackAnalyze(text);
+      const fallback = fallbackAnalyze(text, entryKind);
       return NextResponse.json(fallback);
     }
 
@@ -188,14 +205,14 @@ export async function POST(req: NextRequest) {
     const content = json?.choices?.[0]?.message?.content;
 
     if (!content) {
-      const fallback = fallbackAnalyze(text);
+      const fallback = fallbackAnalyze(text, entryKind);
       return NextResponse.json(fallback);
     }
 
     const parsed = JSON.parse(content);
 
     const result: AnalyzeResult = {
-      category: normalizeCategory(parsed.category || "other", text),
+      category: normalizeCategory(parsed.category || "other", text, entryKind),
       priority:
         parsed.priority === "high" || parsed.priority === "low"
           ? parsed.priority
@@ -212,6 +229,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(result);
   } catch (error) {
     console.error("Analyze route error:", error);
-    return NextResponse.json(fallbackAnalyze(""), { status: 200 });
+    return NextResponse.json(
+      fallbackAnalyze("", "service"),
+      { status: 200 }
+    );
   }
 }

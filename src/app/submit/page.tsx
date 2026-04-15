@@ -18,9 +18,39 @@ export default function SubmitPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
+  const [geoMessage, setGeoMessage] = useState("");
+
   useEffect(() => {
     sdk.actions.ready().catch(console.error);
   }, []);
+
+  const handleUseCurrentLocation = async () => {
+    if (!navigator.geolocation) {
+      setGeoMessage("Geolocation is not supported on this device.");
+      return;
+    }
+
+    setGeoMessage("Detecting current location...");
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLatitude(position.coords.latitude);
+        setLongitude(position.coords.longitude);
+        setGeoMessage("Current coordinates saved successfully.");
+      },
+      (error) => {
+        console.error("Geolocation error:", error);
+        setGeoMessage("Could not retrieve current location.");
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 12000,
+        maximumAge: 60000,
+      }
+    );
+  };
 
   const handleSubmit = async () => {
     if (!text.trim()) {
@@ -70,6 +100,8 @@ export default function SubmitPage() {
           summary,
           support_mode: supportMode,
           location_text: locationText.trim() || null,
+          latitude,
+          longitude,
         }),
       });
 
@@ -88,6 +120,9 @@ export default function SubmitPage() {
       setLocationText("");
       setType("request");
       setSupportMode("online");
+      setLatitude(null);
+      setLongitude(null);
+      setGeoMessage("");
     } catch (err) {
       console.error("Submit error:", err);
       setMessage(
@@ -100,9 +135,11 @@ export default function SubmitPage() {
     setLoading(false);
   };
 
+  const showGeoControls = supportMode === "in_person" || supportMode === "both";
+
   return (
     <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-blue-100 via-slate-50 to-violet-100 px-4 py-6">
-      <div className="pointer-events-none absolute inset-0 opacity-[0.08] bg-[url('/og-image.png')] bg-cover bg-center" />
+      <div className="pointer-events-none absolute inset-0 opacity-[0.08] bg-[url('/og-image-v2.png')] bg-cover bg-center" />
       <div className="pointer-events-none absolute inset-0 bg-white/35" />
 
       <div className="relative mx-auto flex max-w-md flex-col gap-4">
@@ -186,9 +223,35 @@ export default function SubmitPage() {
                 className="w-full rounded-2xl border border-zinc-300 bg-white px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500"
               />
               <p className="text-sm text-zinc-500">
-                Optional. Useful for in-person support or hybrid requests.
+                Optional text location. Useful for in-person support or hybrid requests.
               </p>
             </div>
+
+            {showGeoControls && (
+              <div className="space-y-3">
+                <p className="text-lg font-medium text-zinc-900">
+                  Precise location for object matching
+                </p>
+
+                <button
+                  type="button"
+                  onClick={handleUseCurrentLocation}
+                  className="w-full rounded-2xl border border-zinc-300 bg-white px-4 py-3 text-sm font-medium text-zinc-900 transition hover:bg-zinc-50"
+                >
+                  Use current location
+                </button>
+
+                {geoMessage && (
+                  <p className="text-sm text-zinc-600">{geoMessage}</p>
+                )}
+
+                {latitude !== null && longitude !== null && (
+                  <p className="text-xs text-zinc-500">
+                    Coordinates saved: {latitude.toFixed(5)}, {longitude.toFixed(5)}
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="space-y-3">
               <label className="text-lg font-medium text-zinc-900">

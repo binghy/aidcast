@@ -11,8 +11,6 @@ type Entry = {
   id: number;
   fid: number | null;
   username: string | null;
-  display_name: string | null;
-  pfp_url: string | null;
   type: "request" | "offer";
   raw_text: string;
   category: string | null;
@@ -23,6 +21,7 @@ type Entry = {
   support_mode: "online" | "in_person" | "both" | null;
   location_text: string | null;
   selected_offer_entry_id?: number | null;
+  selected_for_request_id?: number | null;
 };
 
 function formatDate(value: string) {
@@ -103,18 +102,13 @@ export default function BoardPage() {
       const json = await res.json();
       const fetchedEntries = (json?.entries || []) as Entry[];
 
-      // Nascondi SEMPRE le request chiuse dalla board
+      // Nascondi SEMPRE tutte le entries chiuse
       const visibleEntries = fetchedEntries.filter(
-        (entry) =>
-          !(
-            entry.type === "request" &&
-            normalizedStatus(entry.status) === "closed"
-          )
+        (entry) => normalizedStatus(entry.status) === "open"
       );
 
-      // Calcola i match solo per request aperte e visibili
       const requestEntries = visibleEntries.filter(
-        (e) => e.type === "request" && normalizedStatus(e.status) === "open"
+        (e) => e.type === "request"
       );
 
       const settled = await Promise.allSettled(
@@ -255,10 +249,7 @@ export default function BoardPage() {
                 Number(entry.fid) === currentFid;
 
               const entryMatches =
-                entry.type === "request" &&
-                normalizedStatus(entry.status) === "open"
-                  ? matchesMap[entry.id] || []
-                  : [];
+                entry.type === "request" ? matchesMap[entry.id] || [] : [];
 
               const hasMatches = entryMatches.length > 0;
 
@@ -322,109 +313,104 @@ export default function BoardPage() {
                       </div>
                     </div>
 
-                    {entry.type === "request" &&
-                      isOwner &&
-                      normalizedStatus(entry.status) === "open" &&
-                      !hasMatches && (
-                        <div className="flex justify-end">
-                          <button
-                            type="button"
-                            onClick={() => handleCloseRequest(entry.id)}
-                            disabled={closingRequestId === entry.id}
-                            className="rounded-2xl border border-zinc-300 bg-white px-3 py-2 text-xs font-medium text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {closingRequestId === entry.id
-                              ? "Closing..."
-                              : "Close request"}
-                          </button>
-                        </div>
-                      )}
+                    {entry.type === "request" && isOwner && !hasMatches && (
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => handleCloseRequest(entry.id)}
+                          disabled={closingRequestId === entry.id}
+                          className="rounded-2xl border border-zinc-300 bg-white px-3 py-2 text-xs font-medium text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {closingRequestId === entry.id
+                            ? "Closing..."
+                            : "Close request"}
+                        </button>
+                      </div>
+                    )}
 
-                    {entry.type === "request" &&
-                      normalizedStatus(entry.status) === "open" &&
-                      hasMatches && (
-                        <div className="space-y-3 border-t border-black/10 pt-4">
-                          <h3 className="text-sm font-semibold text-zinc-900">
-                            Best matches
-                          </h3>
+                    {entry.type === "request" && hasMatches && (
+                      <div className="space-y-3 border-t border-black/10 pt-4">
+                        <h3 className="text-sm font-semibold text-zinc-900">
+                          Best matches
+                        </h3>
 
-                          <div className="space-y-3">
-                            {entryMatches.map((match) => (
-                              <div
-                                key={match.id}
-                                className="rounded-2xl border border-blue-200 bg-blue-50/60 p-3"
-                              >
-                                <div className="mb-2 flex items-start justify-between gap-3">
-                                  <span className="rounded-full border border-violet-200 bg-violet-100 px-3 py-1 text-xs font-medium text-violet-700">
-                                    offer
-                                  </span>
-                                  <span className="text-xs font-medium text-zinc-600">
-                                    Score {match.matchScore}
-                                  </span>
+                        <div className="space-y-3">
+                          {entryMatches.map((match) => (
+                            <div
+                              key={match.id}
+                              className="rounded-2xl border border-blue-200 bg-blue-50/60 p-3"
+                            >
+                              <div className="mb-2 flex items-start justify-between gap-3">
+                                <span className="rounded-full border border-violet-200 bg-violet-100 px-3 py-1 text-xs font-medium text-violet-700">
+                                  offer
+                                </span>
+                                <span className="text-xs font-medium text-zinc-600">
+                                  Score {match.matchScore}
+                                </span>
+                              </div>
+
+                              <div className="space-y-2">
+                                <p className="text-base font-medium leading-7 text-zinc-950">
+                                  {match.summary || match.raw_text}
+                                </p>
+
+                                <div className="flex flex-wrap gap-2">
+                                  {match.category && <Badge>{match.category}</Badge>}
+                                  {match.support_mode && (
+                                    <Badge>
+                                      {match.support_mode === "in_person"
+                                        ? "In person"
+                                        : match.support_mode}
+                                    </Badge>
+                                  )}
+                                  {match.location_text && (
+                                    <Badge>{match.location_text}</Badge>
+                                  )}
                                 </div>
 
-                                <div className="space-y-2">
-                                  <p className="text-base font-medium leading-7 text-zinc-950">
-                                    {match.summary || match.raw_text}
-                                  </p>
+                                <p className="text-xs leading-6 text-zinc-600">
+                                  {match.matchReason}
+                                </p>
 
-                                  <div className="flex flex-wrap gap-2">
-                                    {match.category && <Badge>{match.category}</Badge>}
-                                    {match.support_mode && (
-                                      <Badge>
-                                        {match.support_mode === "in_person"
-                                          ? "In person"
-                                          : match.support_mode}
-                                      </Badge>
-                                    )}
-                                    {match.location_text && (
-                                      <Badge>{match.location_text}</Badge>
-                                    )}
-                                  </div>
+                                <p className="text-xs text-zinc-500">
+                                  {(match.priority || "low") +
+                                    " • " +
+                                    match.scoreSource}
+                                </p>
 
-                                  <p className="text-xs leading-6 text-zinc-600">
-                                    {match.matchReason}
-                                  </p>
+                                <div className="flex flex-wrap gap-2 pt-1">
+                                  {match.username && (
+                                    <a
+                                      href={`https://warpcast.com/${match.username}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="rounded-2xl border border-zinc-300 bg-white px-3 py-2 text-xs font-medium text-zinc-900 transition hover:bg-zinc-50"
+                                    >
+                                      Open profile
+                                    </a>
+                                  )}
 
-                                  <p className="text-xs text-zinc-500">
-                                    {(match.priority || "low") +
-                                      " • " +
-                                      match.scoreSource}
-                                  </p>
-
-                                  <div className="flex flex-wrap gap-2 pt-1">
-                                    {match.username && (
-                                      <a
-                                        href={`https://warpcast.com/${match.username}`}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="rounded-2xl border border-zinc-300 bg-white px-3 py-2 text-xs font-medium text-zinc-900 transition hover:bg-zinc-50"
-                                      >
-                                        Open profile
-                                      </a>
-                                    )}
-
-                                    {isOwner && (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          handleCloseRequest(entry.id, match.id)
-                                        }
-                                        disabled={closingRequestId === entry.id}
-                                        className="rounded-2xl border border-black bg-black px-3 py-2 text-xs font-medium text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
-                                      >
-                                        {closingRequestId === entry.id
-                                          ? "Closing..."
-                                          : "Choose & close"}
-                                      </button>
-                                    )}
-                                  </div>
+                                  {isOwner && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleCloseRequest(entry.id, match.id)
+                                      }
+                                      disabled={closingRequestId === entry.id}
+                                      className="rounded-2xl border border-black bg-black px-3 py-2 text-xs font-medium text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      {closingRequestId === entry.id
+                                        ? "Closing..."
+                                        : "Choose & close"}
+                                    </button>
+                                  )}
                                 </div>
                               </div>
-                            ))}
-                          </div>
+                            </div>
+                          ))}
                         </div>
-                      )}
+                      </div>
+                    )}
                   </div>
                 </Card>
               );

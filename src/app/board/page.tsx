@@ -81,6 +81,7 @@ export default function BoardPage() {
   );
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
   const [closingRequestId, setClosingRequestId] = useState<number | null>(null);
 
   const currentFid = context?.user?.fid ? Number(context.user.fid) : null;
@@ -161,6 +162,7 @@ export default function BoardPage() {
   ) => {
     try {
       setClosingRequestId(requestId);
+      setActionMessage("");
 
       const res = await sdk.quickAuth.fetch("/api/entries/close", {
         method: "POST",
@@ -179,10 +181,16 @@ export default function BoardPage() {
         throw new Error(json?.error || "Could not close request.");
       }
 
+      setActionMessage(
+        selectedOfferEntryId
+          ? "Request closed successfully with selected offer."
+          : "Request closed successfully."
+      );
+
       await refreshBoard();
     } catch (error) {
       console.error("Close request error:", error);
-      alert(
+      setActionMessage(
         error instanceof Error ? error.message : "Could not close request."
       );
     } finally {
@@ -201,14 +209,20 @@ export default function BoardPage() {
         </a>
 
         <div className="space-y-2 text-center">
-          <h1 className="text-4xl font-bold tracking-tight text-zinc-950">
+          <h1 className="text-3xl font-bold tracking-tight text-zinc-950">
             Community Board
           </h1>
-          <p className="text-base leading-7 text-zinc-700">
+          <p className="text-sm leading-6 text-zinc-700">
             Open requests and offers, ranked by AI and enriched with support mode
             and location.
           </p>
         </div>
+
+        {actionMessage && (
+          <Card className="rounded-3xl border border-black/15 bg-white/85 p-4 shadow-md backdrop-blur-md">
+            <p className="text-sm text-zinc-700">{actionMessage}</p>
+          </Card>
+        )}
 
         {loading ? (
           <Card className="rounded-3xl border border-black/15 bg-white/85 p-5 shadow-md backdrop-blur-md">
@@ -229,6 +243,12 @@ export default function BoardPage() {
                 currentFid !== null &&
                 entry.fid !== null &&
                 Number(entry.fid) === currentFid;
+
+              const entryMatches = matchesMap[entry.id] || [];
+              const hasMatches =
+                entry.type === "request" &&
+                normalizedStatus(entry.status) === "open" &&
+                entryMatches.length > 0;
 
               return (
                 <Card
@@ -292,7 +312,8 @@ export default function BoardPage() {
 
                     {entry.type === "request" &&
                       isOwner &&
-                      normalizedStatus(entry.status) === "open" && (
+                      normalizedStatus(entry.status) === "open" &&
+                      !hasMatches && (
                         <div className="flex justify-end">
                           <button
                             type="button"
@@ -307,92 +328,89 @@ export default function BoardPage() {
                         </div>
                       )}
 
-                    {entry.type === "request" &&
-                      normalizedStatus(entry.status) === "open" &&
-                      matchesMap[entry.id] &&
-                      matchesMap[entry.id].length > 0 && (
-                        <div className="space-y-3 border-t border-black/10 pt-4">
-                          <h3 className="text-sm font-semibold text-zinc-900">
-                            Best matches
-                          </h3>
+                    {hasMatches && (
+                      <div className="space-y-3 border-t border-black/10 pt-4">
+                        <h3 className="text-sm font-semibold text-zinc-900">
+                          Best matches
+                        </h3>
 
-                          <div className="space-y-3">
-                            {matchesMap[entry.id].map((match) => (
-                              <div
-                                key={match.id}
-                                className="rounded-2xl border border-blue-200 bg-blue-50/60 p-3"
-                              >
-                                <div className="mb-2 flex items-start justify-between gap-3">
-                                  <span className="rounded-full border border-violet-200 bg-violet-100 px-3 py-1 text-xs font-medium text-violet-700">
-                                    offer
-                                  </span>
-                                  <span className="text-xs font-medium text-zinc-600">
-                                    Score {match.matchScore}
-                                  </span>
+                        <div className="space-y-3">
+                          {entryMatches.map((match) => (
+                            <div
+                              key={match.id}
+                              className="rounded-2xl border border-blue-200 bg-blue-50/60 p-3"
+                            >
+                              <div className="mb-2 flex items-start justify-between gap-3">
+                                <span className="rounded-full border border-violet-200 bg-violet-100 px-3 py-1 text-xs font-medium text-violet-700">
+                                  offer
+                                </span>
+                                <span className="text-xs font-medium text-zinc-600">
+                                  Score {match.matchScore}
+                                </span>
+                              </div>
+
+                              <div className="space-y-2">
+                                <p className="text-base font-medium leading-7 text-zinc-950">
+                                  {match.summary || match.raw_text}
+                                </p>
+
+                                <div className="flex flex-wrap gap-2">
+                                  {match.category && <Badge>{match.category}</Badge>}
+                                  {match.support_mode && (
+                                    <Badge>
+                                      {match.support_mode === "in_person"
+                                        ? "In person"
+                                        : match.support_mode}
+                                    </Badge>
+                                  )}
+                                  {match.location_text && (
+                                    <Badge>{match.location_text}</Badge>
+                                  )}
                                 </div>
 
-                                <div className="space-y-2">
-                                  <p className="text-base font-medium leading-7 text-zinc-950">
-                                    {match.summary || match.raw_text}
-                                  </p>
+                                <p className="text-xs leading-6 text-zinc-600">
+                                  {match.matchReason}
+                                </p>
 
-                                  <div className="flex flex-wrap gap-2">
-                                    {match.category && <Badge>{match.category}</Badge>}
-                                    {match.support_mode && (
-                                      <Badge>
-                                        {match.support_mode === "in_person"
-                                          ? "In person"
-                                          : match.support_mode}
-                                      </Badge>
-                                    )}
-                                    {match.location_text && (
-                                      <Badge>{match.location_text}</Badge>
-                                    )}
-                                  </div>
+                                <p className="text-xs text-zinc-500">
+                                  {(match.priority || "low") +
+                                    " • " +
+                                    match.scoreSource}
+                                </p>
 
-                                  <p className="text-xs leading-6 text-zinc-600">
-                                    {match.matchReason}
-                                  </p>
+                                <div className="flex flex-wrap gap-2 pt-1">
+                                  {match.username && (
+                                    <a
+                                      href={`https://warpcast.com/${match.username}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="rounded-2xl border border-zinc-300 bg-white px-3 py-2 text-xs font-medium text-zinc-900 transition hover:bg-zinc-50"
+                                    >
+                                      Open profile
+                                    </a>
+                                  )}
 
-                                  <p className="text-xs text-zinc-500">
-                                    {(match.priority || "low") +
-                                      " • " +
-                                      match.scoreSource}
-                                  </p>
-
-                                  <div className="flex flex-wrap gap-2 pt-1">
-                                    {match.username && (
-                                      <a
-                                        href={`https://warpcast.com/${match.username}`}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="rounded-2xl border border-zinc-300 bg-white px-3 py-2 text-xs font-medium text-zinc-900 transition hover:bg-zinc-50"
-                                      >
-                                        Open profile
-                                      </a>
-                                    )}
-
-                                    {isOwner && (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          handleCloseRequest(entry.id, match.id)
-                                        }
-                                        disabled={closingRequestId === entry.id}
-                                        className="rounded-2xl border border-black bg-black px-3 py-2 text-xs font-medium text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
-                                      >
-                                        {closingRequestId === entry.id
-                                          ? "Closing..."
-                                          : "Choose & close"}
-                                      </button>
-                                    )}
-                                  </div>
+                                  {isOwner && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleCloseRequest(entry.id, match.id)
+                                      }
+                                      disabled={closingRequestId === entry.id}
+                                      className="rounded-2xl border border-black bg-black px-3 py-2 text-xs font-medium text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      {closingRequestId === entry.id
+                                        ? "Closing..."
+                                        : "Choose & close"}
+                                    </button>
+                                  )}
                                 </div>
                               </div>
-                            ))}
-                          </div>
+                            </div>
+                          ))}
                         </div>
-                      )}
+                      </div>
+                    )}
                   </div>
                 </Card>
               );

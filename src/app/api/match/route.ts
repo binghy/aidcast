@@ -43,11 +43,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const requestStatus = requestEntry.status ?? "open";
+    if (requestStatus !== "open") {
+      return NextResponse.json({
+        requestId,
+        matches: [],
+      });
+    }
+
     const { data: offers, error: offersError } = await supabase
       .from("entries")
       .select("*")
       .eq("type", "offer")
-      .eq("status", "open")
       .order("created_at", { ascending: false });
 
     if (offersError) {
@@ -59,6 +66,7 @@ export async function POST(req: NextRequest) {
     }
 
     const scoredMatches = (offers || [])
+      .filter((offer) => (offer.status ?? "open") === "open")
       .map((offer) => {
         const evaluation = evaluateOfferForRequest(
           requestEntry,

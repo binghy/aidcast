@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { quickAuthClient } from "@/lib/quick-auth";
 import { createClient } from "@supabase/supabase-js";
-import { recomputeMatchNotifications } from "@/lib/recompute-match-notifications";
+import { quickAuthClient } from "@/lib/quick-auth";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -10,18 +9,14 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export async function POST(req: NextRequest) {
   try {
-    const authorization = req.headers.get("authorization");
-    console.log("Authorization header present:", !!authorization);
-    console.log("Authorization header prefix:", authorization?.slice(0, 20));
+    const authHeader = req.headers.get("authorization");
+    const token = authHeader?.startsWith("Bearer ")
+      ? authHeader.slice("Bearer ".length)
+      : null;
 
-    if (!authorization || !authorization.startsWith("Bearer ")) {
-      return NextResponse.json(
-        { error: "Missing token" },
-        { status: 401 }
-      );
+    if (!token) {
+      return NextResponse.json({ error: "Missing auth token" }, { status: 401 });
     }
-
-    const token = authorization.split(" ")[1];
 
     const payload = await quickAuthClient.verifyJwt({
       token,
@@ -34,6 +29,10 @@ export async function POST(req: NextRequest) {
 
     console.log("Resolved fid:", fid);
 
+    if (!fid || Number.isNaN(fid)) {
+      return NextResponse.json({ error: "Invalid fid" }, { status: 401 });
+    }
+
     const body = await req.json();
 
     const {
@@ -42,54 +41,50 @@ export async function POST(req: NextRequest) {
       category,
       priority,
       summary,
-      status,
       support_mode,
       location_text,
-      username,
-      display_name,
-      pfp_url,
     } = body;
 
-    const { error } = await supabase.from("entries").insert([
-      {
-        fid,
-        username: username || null,
-        display_name: display_name || null,
-        pfp_url: pfp_url || null,
-        type,
-        raw_text,
-        category,
-        priority,
-        summary,
-        status,
-        support_mode,
-        location_text,
-      },
-    ]);
+    if (!type || (type !== "request" && type !== "offer")) {
+      return NextResponse.json({ error: "Invalid type" }, { status: 400 });
+    }
+
+    if (!raw_text || typeof raw_text !== "string") {
+      return NextResponse.json({ error: "Invalid raw_text" }, { status: 400 });
+    }
+
+    const insertPayload = {
+      fid,
+      type,
+      raw_text: raw_text.trim(),
+      category: category || "other",
+      priority: priority || "medium",
+      summary: summary || raw_text.trim(),
+      support_mode: support_mode || "online",
+      location_text: location_text || null,
+      status: "open",
+    };
+
+    const { data, error } = await supabase
+      .from("entries")
+      .insert(insertPayload)
+      .select("*")
+      .single();
 
     if (error) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 400 }
-      );
+      console.error("Entries insert error:", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // After saving, we recalculate the matches and notify you.
-    // For efficiency, recalculation is limited to the same category as the new entry.
-    try {
-      await recomputeMatchNotifications({
-        onlyCategory: category || null,
-      });
-    } catch (notifyError) {
-      console.error("Post-insert notification recompute error:", notifyError);
-    }
-
-    return NextResponse.json({ ok: true, fid });
+    return NextResponse.json({
+      success: true,
+      entry: data,
+    });
   } catch (error) {
     console.error("Entries route error:", error);
     return NextResponse.json(
-      { error: "Unauthorized or server error" },
-      { status: 401 }
+      { error: "Unexpected server error" },
+      { status: 500 }
     );
   }
 }

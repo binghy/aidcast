@@ -33,6 +33,10 @@ function formatDate(value: string) {
   }
 }
 
+function normalizedStatus(status: string | null | undefined) {
+  return status ?? "open";
+}
+
 function typeBadgeClass(type: Entry["type"]) {
   return type === "request"
     ? "bg-blue-100 text-blue-700 border-blue-200"
@@ -48,7 +52,9 @@ function priorityBadgeClass(priority: string | null) {
 }
 
 function statusBadgeClass(status: string | null) {
-  if (status === "closed") return "bg-rose-100 text-rose-700 border-rose-200";
+  if ((status ?? "open") === "closed") {
+    return "bg-rose-100 text-rose-700 border-rose-200";
+  }
   return "bg-emerald-100 text-emerald-700 border-emerald-200";
 }
 
@@ -56,7 +62,7 @@ function entrySortScore(
   entry: Entry,
   matchesMap: Record<number, ScoredMatch[]>
 ) {
-  const isOpen = entry.status === "open";
+  const isOpen = normalizedStatus(entry.status) === "open";
   const isRequest = entry.type === "request";
   const hasMatches = isRequest && (matchesMap[entry.id]?.length || 0) > 0;
 
@@ -97,7 +103,7 @@ export default function BoardPage() {
       const fetchedEntries = (json?.entries || []) as Entry[];
 
       const requestEntries = fetchedEntries.filter(
-        (e) => e.type === "request" && e.status === "open"
+        (e) => e.type === "request" && normalizedStatus(e.status) === "open"
       );
 
       const settled = await Promise.allSettled(
@@ -253,7 +259,7 @@ export default function BoardPage() {
                             entry.status
                           )}`}
                         >
-                          {entry.status || "open"}
+                          {normalizedStatus(entry.status)}
                         </span>
                       </div>
 
@@ -284,23 +290,25 @@ export default function BoardPage() {
                       </div>
                     </div>
 
-                    {entry.type === "request" && isOwner && entry.status === "open" && (
-                      <div className="flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => handleCloseRequest(entry.id)}
-                          disabled={closingRequestId === entry.id}
-                          className="rounded-2xl border border-zinc-300 bg-white px-3 py-2 text-xs font-medium text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {closingRequestId === entry.id
-                            ? "Closing..."
-                            : "Close request"}
-                        </button>
-                      </div>
-                    )}
+                    {entry.type === "request" &&
+                      isOwner &&
+                      normalizedStatus(entry.status) === "open" && (
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => handleCloseRequest(entry.id)}
+                            disabled={closingRequestId === entry.id}
+                            className="rounded-2xl border border-zinc-300 bg-white px-3 py-2 text-xs font-medium text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {closingRequestId === entry.id
+                              ? "Closing..."
+                              : "Close request"}
+                          </button>
+                        </div>
+                      )}
 
                     {entry.type === "request" &&
-                      entry.status === "open" &&
+                      normalizedStatus(entry.status) === "open" &&
                       matchesMap[entry.id] &&
                       matchesMap[entry.id].length > 0 && (
                         <div className="space-y-3 border-t border-black/10 pt-4">

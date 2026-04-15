@@ -10,7 +10,23 @@ const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 type DbEntry = EntryLike & {
   id: number;
   fid?: number | null;
+  status?: string | null;
+  created_at?: string | null;
 };
+
+//const OFFER_TTL_HOURS = 48;
+const OFFER_TTL_HOURS = 0.02;
+
+function isExpiredOffer(entry: { type: string; created_at?: string | null }) {
+  if (entry.type !== "offer") return false;
+  if (!entry.created_at) return false;
+
+  const createdAt = new Date(entry.created_at).getTime();
+  const now = Date.now();
+  const ageHours = (now - createdAt) / (1000 * 60 * 60);
+
+  return ageHours > OFFER_TTL_HOURS;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -64,6 +80,7 @@ export async function POST(req: NextRequest) {
 
     const scoredMatches = (offers || [])
       .filter((offer) => (offer.status ?? "open") === "open")
+      .filter((offer) => !isExpiredOffer(offer))
       .map((offer) => {
         const evaluation = evaluateOfferForRequest(
           requestEntry,

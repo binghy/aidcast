@@ -24,6 +24,9 @@ type Entry = {
   selected_for_request_id?: number | null;
 };
 
+//const OFFER_TTL_HOURS = 48;
+const OFFER_TTL_HOURS = 0.02;
+
 function formatDate(value: string) {
   try {
     return new Date(value).toLocaleString("en-GB");
@@ -34,6 +37,17 @@ function formatDate(value: string) {
 
 function normalizedStatus(status: string | null | undefined) {
   return status ?? "open";
+}
+
+function isExpiredOffer(entry: Entry) {
+  if (entry.type !== "offer") return false;
+  if (!entry.created_at) return false;
+
+  const createdAt = new Date(entry.created_at).getTime();
+  const now = Date.now();
+  const ageHours = (now - createdAt) / (1000 * 60 * 60);
+
+  return ageHours > OFFER_TTL_HOURS;
 }
 
 function typeBadgeClass(type: Entry["type"]) {
@@ -102,10 +116,11 @@ export default function BoardPage() {
       const json = await res.json();
       const fetchedEntries = (json?.entries || []) as Entry[];
 
-      // Nascondi SEMPRE tutte le entries chiuse
-      const visibleEntries = fetchedEntries.filter(
-        (entry) => normalizedStatus(entry.status) === "open"
-      );
+      const visibleEntries = fetchedEntries.filter((entry) => {
+        if (normalizedStatus(entry.status) !== "open") return false;
+        if (entry.type === "offer" && isExpiredOffer(entry)) return false;
+        return true;
+      });
 
       const requestEntries = visibleEntries.filter(
         (e) => e.type === "request"

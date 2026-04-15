@@ -162,17 +162,17 @@ export default function BoardPage() {
         </a>
 
         <div className="space-y-2 text-center">
-          <h1 className="text-3xl font-bold tracking-tight text-zinc-950">
+          <h1 className="text-4xl font-bold tracking-tight text-zinc-950">
             Community Board
           </h1>
-          <p className="text-sm leading-6 text-zinc-700">
+          <p className="text-base leading-7 text-zinc-700">
             Open requests and offers, ranked by AI and enriched with support mode
             and location.
           </p>
         </div>
 
         {loading ? (
-          <Card className="rounded-3xl border border-black/10 bg-white/85 p-5 shadow-md backdrop-blur-md">
+          <Card className="rounded-3xl border border-black/15 bg-white/85 p-5 shadow-md backdrop-blur-md">
             <p className="text-sm text-zinc-600">Loading board...</p>
           </Card>
         ) : errorMessage ? (
@@ -180,7 +180,7 @@ export default function BoardPage() {
             <p className="text-sm text-red-700">{errorMessage}</p>
           </Card>
         ) : entries.length === 0 ? (
-          <Card className="rounded-3xl border border-black/10 bg-white/85 p-5 shadow-md backdrop-blur-md">
+          <Card className="rounded-3xl border border-black/15 bg-white/85 p-5 shadow-md backdrop-blur-md">
             <p className="text-sm text-zinc-600">No open entries yet.</p>
           </Card>
         ) : (
@@ -188,7 +188,7 @@ export default function BoardPage() {
             {entries.map((entry) => (
               <Card
                 key={entry.id}
-                className="rounded-3xl border border-black/10 bg-white/90 p-5 shadow-md backdrop-blur-md"
+                className="rounded-3xl border border-black/15 bg-white/85 p-5 shadow-md backdrop-blur-md"
               >
                 <div className="space-y-4">
                   <div className="flex items-start justify-between gap-3">
@@ -224,7 +224,7 @@ export default function BoardPage() {
                   </div>
 
                   <div className="space-y-3">
-                    <h2 className="text-xl font-semibold leading-8 text-zinc-950">
+                    <h2 className="text-2xl font-semibold leading-9 text-zinc-950">
                       {entry.summary || entry.raw_text}
                     </h2>
 
@@ -248,7 +248,7 @@ export default function BoardPage() {
                     matchesMap[entry.id] &&
                     matchesMap[entry.id].length > 0 && (
                       <div className="space-y-4 border-t border-black/10 pt-4">
-                        <h3 className="text-base font-semibold text-zinc-900">
+                        <h3 className="text-lg font-semibold text-zinc-900">
                           Best matches
                         </h3>
 
@@ -268,7 +268,7 @@ export default function BoardPage() {
                               </div>
 
                               <div className="space-y-3">
-                                <p className="text-lg font-medium leading-7 text-zinc-950">
+                                <p className="text-xl font-medium leading-8 text-zinc-950">
                                   {match.summary || match.raw_text}
                                 </p>
 

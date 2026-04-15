@@ -3,9 +3,9 @@ import { createClient } from "@supabase/supabase-js";
 import { quickAuthClient } from "@/lib/quick-auth";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
 export async function POST(req: NextRequest) {
   try {
@@ -69,13 +69,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (requestEntry.status === "closed") {
-      return NextResponse.json({
-        success: true,
-        alreadyClosed: true,
-      });
-    }
-
     let validatedSelectedOfferId: number | null = null;
 
     if (
@@ -93,7 +86,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const { error: updateError } = await supabase
+    const { data: updatedEntry, error: updateError } = await supabase
       .from("entries")
       .update({
         status: "closed",
@@ -101,17 +94,27 @@ export async function POST(req: NextRequest) {
         closed_by_fid: fid,
         selected_offer_entry_id: validatedSelectedOfferId,
       })
-      .eq("id", requestId);
+      .eq("id", requestId)
+      .eq("type", "request")
+      .select("id, status, selected_offer_entry_id, closed_by_fid")
+      .single();
 
     if (updateError) {
       console.error("Close request update error:", updateError);
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
+    if (!updatedEntry || updatedEntry.status !== "closed") {
+      return NextResponse.json(
+        { error: "Request was not actually closed" },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json({
       success: true,
       requestId,
-      selectedOfferEntryId: validatedSelectedOfferId,
+      updatedEntry,
     });
   } catch (error) {
     console.error("Close request route error:", error);

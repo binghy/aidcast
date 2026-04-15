@@ -3,12 +3,13 @@ import { createClient } from "@supabase/supabase-js";
 import { evaluateOfferForRequest, EntryLike } from "@/lib/match-engine";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
 type DbEntry = EntryLike & {
   id: number;
+  fid?: number | null;
 };
 
 export async function POST(req: NextRequest) {
@@ -36,15 +37,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (requestEntry.type !== "request") {
-      return NextResponse.json(
-        { error: "Only requests can be matched" },
-        { status: 400 }
-      );
-    }
-
     const requestStatus = requestEntry.status ?? "open";
-    if (requestStatus !== "open") {
+
+    if (requestEntry.type !== "request" || requestStatus !== "open") {
+      await supabase.from("request_match_state").delete().eq("request_id", requestId);
+
       return NextResponse.json({
         requestId,
         matches: [],
@@ -85,6 +82,23 @@ export async function POST(req: NextRequest) {
       .filter(Boolean)
       .sort((a, b) => b!.matchScore - a!.matchScore)
       .slice(0, 3);
+
+    const bestMatch = scoredMatches[0];
+
+    if (bestMatch) {
+      await supabase.from("request_match_state").upsert(
+        {
+          request_id: requestEntry.id,
+          fid: requestEntry.fid ?? null,
+          best_match_entry_id: bestMatch.id,
+          best_score: bestMatch.matchScore,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "request_id" }
+      );
+    } else {
+      await supabase.from("request_match_state").delete().eq("request_id", requestId);
+    }
 
     return NextResponse.json({
       requestId,

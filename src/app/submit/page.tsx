@@ -103,6 +103,7 @@ export default function SubmitPage() {
           support_mode: entryKind === "object" ? "in_person" : supportMode,
           location_text: locationText.trim() || null,
           entry_kind: entryKind,
+          username: context.user.username ?? null,
         }),
       });
 

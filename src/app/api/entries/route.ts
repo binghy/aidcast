@@ -3,9 +3,9 @@ import { createClient } from "@supabase/supabase-js";
 import { quickAuthClient } from "@/lib/quick-auth";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
 export async function POST(req: NextRequest) {
   try {
@@ -43,6 +43,7 @@ export async function POST(req: NextRequest) {
       summary,
       support_mode,
       location_text,
+      username,
     } = body;
 
     if (!type || (type !== "request" && type !== "offer")) {
@@ -55,6 +56,7 @@ export async function POST(req: NextRequest) {
 
     const insertPayload = {
       fid,
+      username: typeof username === "string" && username.trim() ? username.trim() : null,
       type,
       raw_text: raw_text.trim(),
       category: category || "other",

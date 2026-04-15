@@ -1,6 +1,8 @@
 export type EntryLike = {
   id: number;
   fid?: number | null;
+  username?: string | null;
+  display_name?: string | null;
   type: "request" | "offer";
   raw_text: string;
   category: string | null;
@@ -10,8 +12,6 @@ export type EntryLike = {
   created_at?: string;
   support_mode?: "online" | "in_person" | "both" | null;
   location_text?: string | null;
-  latitude?: number | null;
-  longitude?: number | null;
 };
 
 export type MatchEvaluation = {
@@ -274,29 +274,6 @@ function supportCompatibility(request: EntryLike, offer: EntryLike) {
   };
 }
 
-function haversineKm(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number
-) {
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const R = 6371;
-
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) *
-      Math.cos(toRad(lat2)) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
-
 function locationCompatibility(request: EntryLike, offer: EntryLike) {
   const requestCity = extractCity(request.location_text);
   const offerCity = extractCity(offer.location_text);
@@ -320,56 +297,11 @@ function locationCompatibility(request: EntryLike, offer: EntryLike) {
   }
 
   if (kind === "object") {
-    const hasCoords =
-      typeof request.latitude === "number" &&
-      typeof request.longitude === "number" &&
-      typeof offer.latitude === "number" &&
-      typeof offer.longitude === "number";
-
-    if (hasCoords) {
-      const distance = haversineKm(
-        request.latitude as number,
-        request.longitude as number,
-        offer.latitude as number,
-        offer.longitude as number
-      );
-
-      if (distance > 30) {
-        return {
-          isCompatible: false,
-          score: 0,
-          reason: `object/tool exchange exceeds 30 km (${distance.toFixed(1)} km)`,
-        };
-      }
-
-      if (distance <= 5) {
-        return {
-          isCompatible: true,
-          score: 20,
-          reason: `very close distance: ${distance.toFixed(1)} km`,
-        };
-      }
-
-      if (distance <= 15) {
-        return {
-          isCompatible: true,
-          score: 14,
-          reason: `good distance: ${distance.toFixed(1)} km`,
-        };
-      }
-
-      return {
-        isCompatible: true,
-        score: 8,
-        reason: `acceptable distance: ${distance.toFixed(1)} km`,
-      };
-    }
-
     if (!requestCity || !offerCity) {
       return {
         isCompatible: false,
         score: 0,
-        reason: "object/tool exchange requires city information or coordinates",
+        reason: "object/tool exchange requires city information",
       };
     }
 
@@ -377,14 +309,14 @@ function locationCompatibility(request: EntryLike, offer: EntryLike) {
       return {
         isCompatible: false,
         score: 0,
-        reason: "object/tool exchange requires same city when coordinates are missing",
+        reason: "object/tool exchange requires same city",
       };
     }
 
     return {
       isCompatible: true,
       score: 12,
-      reason: `same city fallback: ${requestCity}`,
+      reason: `same city: ${requestCity}`,
     };
   }
 

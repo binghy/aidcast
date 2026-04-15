@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { sdk } from "@farcaster/miniapp-sdk";
+import { useMiniApp } from "@neynar/react";
 import { findMatchesForRequest, ScoredMatch } from "@/lib/matching";
 import Card from "@/components/Card";
 import Badge from "@/components/Badge";
@@ -20,6 +22,7 @@ type Entry = {
   created_at: string;
   support_mode: "online" | "in_person" | "both" | null;
   location_text: string | null;
+  selected_offer_entry_id?: number | null;
 };
 
 function formatDate(value: string) {
@@ -64,97 +67,122 @@ function entrySortScore(
 }
 
 export default function BoardPage() {
+  const { context } = useMiniApp();
+
   const [entries, setEntries] = useState<Entry[]>([]);
   const [matchesMap, setMatchesMap] = useState<Record<number, ScoredMatch[]>>(
     {}
   );
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [closingRequestId, setClosingRequestId] = useState<number | null>(null);
 
-  useEffect(() => {
-    let isMounted = true;
+  const currentFid = context?.user?.fid ? Number(context.user.fid) : null;
 
-    async function fetchEntries() {
-      setLoading(true);
-      setErrorMessage("");
+  async function refreshBoard() {
+    setLoading(true);
+    setErrorMessage("");
 
-      try {
-        const res = await fetch("/api/board", {
-          method: "GET",
-          cache: "no-store",
-        });
+    try {
+      const res = await fetch("/api/board", {
+        method: "GET",
+        cache: "no-store",
+      });
 
-        if (!res.ok) {
-          throw new Error(`Board fetch failed with status ${res.status}`);
-        }
+      if (!res.ok) {
+        throw new Error(`Board fetch failed with status ${res.status}`);
+      }
 
-        const json = await res.json();
-        const fetchedEntries = (json?.entries || []) as Entry[];
+      const json = await res.json();
+      const fetchedEntries = (json?.entries || []) as Entry[];
 
-        if (!isMounted) return;
+      const requestEntries = fetchedEntries.filter(
+        (e) => e.type === "request" && e.status === "open"
+      );
 
-        const requestEntries = fetchedEntries.filter(
-          (e) => e.type === "request" && e.status === "open"
-        );
+      const settled = await Promise.allSettled(
+        requestEntries.map(async (request) => {
+          const matches = await findMatchesForRequest(request, 3);
+          return { requestId: request.id, matches };
+        })
+      );
 
-        const settled = await Promise.allSettled(
-          requestEntries.map(async (request) => {
-            const matches = await findMatchesForRequest(request, 3);
-            return { requestId: request.id, matches };
-          })
-        );
+      const nextMatchesMap: Record<number, ScoredMatch[]> = {};
 
-        if (!isMounted) return;
-
-        const nextMatchesMap: Record<number, ScoredMatch[]> = {};
-
-        for (const result of settled) {
-          if (result.status === "fulfilled") {
-            nextMatchesMap[result.value.requestId] = result.value.matches;
-          } else {
-            console.error("Board match computation error:", result.reason);
-          }
-        }
-
-        const sortedEntries = [...fetchedEntries].sort((a, b) => {
-          const aGroup = entrySortScore(a, nextMatchesMap);
-          const bGroup = entrySortScore(b, nextMatchesMap);
-
-          if (aGroup !== bGroup) return aGroup - bGroup;
-
-          const aTime = new Date(a.created_at).getTime();
-          const bTime = new Date(b.created_at).getTime();
-
-          return bTime - aTime;
-        });
-
-        setEntries(sortedEntries);
-        setMatchesMap(nextMatchesMap);
-      } catch (error) {
-        console.error("Board page error:", error);
-
-        if (!isMounted) return;
-
-        setEntries([]);
-        setMatchesMap({});
-        setErrorMessage(
-          error instanceof Error
-            ? error.message
-            : "Unexpected error while loading the board."
-        );
-      } finally {
-        if (isMounted) {
-          setLoading(false);
+      for (const result of settled) {
+        if (result.status === "fulfilled") {
+          nextMatchesMap[result.value.requestId] = result.value.matches;
+        } else {
+          console.error("Board match computation error:", result.reason);
         }
       }
+
+      const sortedEntries = [...fetchedEntries].sort((a, b) => {
+        const aGroup = entrySortScore(a, nextMatchesMap);
+        const bGroup = entrySortScore(b, nextMatchesMap);
+
+        if (aGroup !== bGroup) return aGroup - bGroup;
+
+        const aTime = new Date(a.created_at).getTime();
+        const bTime = new Date(b.created_at).getTime();
+
+        return bTime - aTime;
+      });
+
+      setEntries(sortedEntries);
+      setMatchesMap(nextMatchesMap);
+    } catch (error) {
+      console.error("Board page error:", error);
+      setEntries([]);
+      setMatchesMap({});
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Unexpected error while loading the board."
+      );
+    } finally {
+      setLoading(false);
     }
+  }
 
-    fetchEntries();
-
-    return () => {
-      isMounted = false;
-    };
+  useEffect(() => {
+    refreshBoard();
   }, []);
+
+  const handleCloseRequest = async (
+    requestId: number,
+    selectedOfferEntryId?: number
+  ) => {
+    try {
+      setClosingRequestId(requestId);
+
+      const res = await sdk.quickAuth.fetch("/api/entries/close", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          requestId,
+          selectedOfferEntryId: selectedOfferEntryId ?? null,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Could not close request.");
+      }
+
+      await refreshBoard();
+    } catch (error) {
+      console.error("Close request error:", error);
+      alert(
+        error instanceof Error ? error.message : "Could not close request."
+      );
+    } finally {
+      setClosingRequestId(null);
+    }
+  };
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-blue-100 via-slate-50 to-violet-100 px-4 py-6">
@@ -190,125 +218,177 @@ export default function BoardPage() {
           </Card>
         ) : (
           <div className="space-y-4">
-            {entries.map((entry) => (
-              <Card
-                key={entry.id}
-                className="rounded-3xl border border-black/15 bg-white/85 p-5 shadow-md backdrop-blur-md"
-              >
-                <div className="space-y-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex flex-wrap gap-2">
-                      <span
-                        className={`rounded-full border px-3 py-1 text-xs font-medium ${typeBadgeClass(
-                          entry.type
-                        )}`}
-                      >
-                        {entry.type}
-                      </span>
+            {entries.map((entry) => {
+              const isOwner =
+                currentFid !== null &&
+                entry.fid !== null &&
+                Number(entry.fid) === currentFid;
 
-                      <span
-                        className={`rounded-full border px-3 py-1 text-xs font-medium ${priorityBadgeClass(
-                          entry.priority
-                        )}`}
-                      >
-                        {entry.priority || "medium"}
-                      </span>
+              return (
+                <Card
+                  key={entry.id}
+                  className="rounded-3xl border border-black/15 bg-white/85 p-5 shadow-md backdrop-blur-md"
+                >
+                  <div className="space-y-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex flex-wrap gap-2">
+                        <span
+                          className={`rounded-full border px-3 py-1 text-xs font-medium ${typeBadgeClass(
+                            entry.type
+                          )}`}
+                        >
+                          {entry.type}
+                        </span>
 
-                      <span
-                        className={`rounded-full border px-3 py-1 text-xs font-medium ${statusBadgeClass(
-                          entry.status
-                        )}`}
-                      >
-                        {entry.status || "open"}
+                        <span
+                          className={`rounded-full border px-3 py-1 text-xs font-medium ${priorityBadgeClass(
+                            entry.priority
+                          )}`}
+                        >
+                          {entry.priority || "medium"}
+                        </span>
+
+                        <span
+                          className={`rounded-full border px-3 py-1 text-xs font-medium ${statusBadgeClass(
+                            entry.status
+                          )}`}
+                        >
+                          {entry.status || "open"}
+                        </span>
+                      </div>
+
+                      <span className="text-xs text-zinc-500">
+                        {formatDate(entry.created_at)}
                       </span>
                     </div>
 
-                    <span className="text-xs text-zinc-500">
-                      {formatDate(entry.created_at)}
-                    </span>
-                  </div>
+                    <div className="space-y-3">
+                      <h2 className="text-lg font-semibold leading-8 text-zinc-950">
+                        {entry.summary || entry.raw_text}
+                      </h2>
 
-                  <div className="space-y-3">
-                    <h2 className="text-lg font-semibold leading-8 text-zinc-950">
-                      {entry.summary || entry.raw_text}
-                    </h2>
+                      <div className="flex flex-wrap gap-2">
+                        {entry.category && <Badge>{entry.category}</Badge>}
 
-                    <div className="flex flex-wrap gap-2">
-                      {entry.category && <Badge>{entry.category}</Badge>}
+                        {entry.support_mode && (
+                          <Badge>
+                            {entry.support_mode === "in_person"
+                              ? "In person"
+                              : entry.support_mode}
+                          </Badge>
+                        )}
 
-                      {entry.support_mode && (
-                        <Badge>
-                          {entry.support_mode === "in_person"
-                            ? "In person"
-                            : entry.support_mode}
-                        </Badge>
-                      )}
-
-                      {entry.location_text && <Badge>{entry.location_text}</Badge>}
+                        {entry.location_text && (
+                          <Badge>{entry.location_text}</Badge>
+                        )}
+                      </div>
                     </div>
-                  </div>
 
-                  {entry.type === "request" &&
-                    entry.status === "open" &&
-                    matchesMap[entry.id] &&
-                    matchesMap[entry.id].length > 0 && (
-                      <div className="space-y-3 border-t border-black/10 pt-4">
-                        <h3 className="text-sm font-semibold text-zinc-900">
-                          Best matches
-                        </h3>
-
-                        <div className="space-y-3">
-                          {matchesMap[entry.id].map((match) => (
-                            <div
-                              key={match.id}
-                              className="rounded-2xl border border-blue-200 bg-blue-50/60 p-3"
-                            >
-                              <div className="mb-2 flex items-start justify-between gap-3">
-                                <span className="rounded-full border border-violet-200 bg-violet-100 px-3 py-1 text-xs font-medium text-violet-700">
-                                  offer
-                                </span>
-                                <span className="text-xs font-medium text-zinc-600">
-                                  Score {match.matchScore}
-                                </span>
-                              </div>
-
-                              <div className="space-y-2">
-                                <p className="text-base font-medium leading-7 text-zinc-950">
-                                  {match.summary || match.raw_text}
-                                </p>
-
-                                <div className="flex flex-wrap gap-2">
-                                  {match.category && <Badge>{match.category}</Badge>}
-                                  {match.support_mode && (
-                                    <Badge>
-                                      {match.support_mode === "in_person"
-                                        ? "In person"
-                                        : match.support_mode}
-                                    </Badge>
-                                  )}
-                                  {match.location_text && (
-                                    <Badge>{match.location_text}</Badge>
-                                  )}
-                                </div>
-
-                                <p className="text-xs leading-6 text-zinc-600">
-                                  {match.matchReason}
-                                </p>
-
-                                <p className="text-xs text-zinc-500">
-                                  {(match.priority || "low") +
-                                    " • " +
-                                    match.scoreSource}
-                                </p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
+                    {entry.type === "request" && isOwner && entry.status === "open" && (
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => handleCloseRequest(entry.id)}
+                          disabled={closingRequestId === entry.id}
+                          className="rounded-2xl border border-zinc-300 bg-white px-3 py-2 text-xs font-medium text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {closingRequestId === entry.id
+                            ? "Closing..."
+                            : "Close request"}
+                        </button>
                       </div>
                     )}
-                </div>
-              </Card>
-            ))}
+
+                    {entry.type === "request" &&
+                      entry.status === "open" &&
+                      matchesMap[entry.id] &&
+                      matchesMap[entry.id].length > 0 && (
+                        <div className="space-y-3 border-t border-black/10 pt-4">
+                          <h3 className="text-sm font-semibold text-zinc-900">
+                            Best matches
+                          </h3>
+
+                          <div className="space-y-3">
+                            {matchesMap[entry.id].map((match) => (
+                              <div
+                                key={match.id}
+                                className="rounded-2xl border border-blue-200 bg-blue-50/60 p-3"
+                              >
+                                <div className="mb-2 flex items-start justify-between gap-3">
+                                  <span className="rounded-full border border-violet-200 bg-violet-100 px-3 py-1 text-xs font-medium text-violet-700">
+                                    offer
+                                  </span>
+                                  <span className="text-xs font-medium text-zinc-600">
+                                    Score {match.matchScore}
+                                  </span>
+                                </div>
+
+                                <div className="space-y-2">
+                                  <p className="text-base font-medium leading-7 text-zinc-950">
+                                    {match.summary || match.raw_text}
+                                  </p>
+
+                                  <div className="flex flex-wrap gap-2">
+                                    {match.category && <Badge>{match.category}</Badge>}
+                                    {match.support_mode && (
+                                      <Badge>
+                                        {match.support_mode === "in_person"
+                                          ? "In person"
+                                          : match.support_mode}
+                                      </Badge>
+                                    )}
+                                    {match.location_text && (
+                                      <Badge>{match.location_text}</Badge>
+                                    )}
+                                  </div>
+
+                                  <p className="text-xs leading-6 text-zinc-600">
+                                    {match.matchReason}
+                                  </p>
+
+                                  <p className="text-xs text-zinc-500">
+                                    {(match.priority || "low") +
+                                      " • " +
+                                      match.scoreSource}
+                                  </p>
+
+                                  <div className="flex flex-wrap gap-2 pt-1">
+                                    {match.username && (
+                                      <a
+                                        href={`https://warpcast.com/${match.username}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="rounded-2xl border border-zinc-300 bg-white px-3 py-2 text-xs font-medium text-zinc-900 transition hover:bg-zinc-50"
+                                      >
+                                        Open profile
+                                      </a>
+                                    )}
+
+                                    {isOwner && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleCloseRequest(entry.id, match.id)
+                                        }
+                                        disabled={closingRequestId === entry.id}
+                                        className="rounded-2xl border border-black bg-black px-3 py-2 text-xs font-medium text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+                                      >
+                                        {closingRequestId === entry.id
+                                          ? "Closing..."
+                                          : "Choose & close"}
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                  </div>
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>

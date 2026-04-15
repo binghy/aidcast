@@ -103,7 +103,12 @@ export default function BoardPage() {
       const json = await res.json();
       const fetchedEntries = (json?.entries || []) as Entry[];
 
-      const requestEntries = fetchedEntries.filter(
+      const visibleEntries = fetchedEntries.filter(
+      (entry) =>
+        !(entry.type === "request" && normalizedStatus(entry.status) === "closed")
+      );
+
+      const requestEntries = visibleEntries.filter(
         (e) => e.type === "request" && normalizedStatus(e.status) === "open"
       );
 
@@ -124,7 +129,7 @@ export default function BoardPage() {
         }
       }
 
-      const sortedEntries = [...fetchedEntries].sort((a, b) => {
+      const sortedEntries = [...visibleEntries].sort((a, b) => {
         const aGroup = entrySortScore(a, nextMatchesMap);
         const bGroup = entrySortScore(b, nextMatchesMap);
 

@@ -21,6 +21,7 @@ export default function SubmitPage() {
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
   const [geoMessage, setGeoMessage] = useState("");
+  const [geoLoading, setGeoLoading] = useState(false);
 
   useEffect(() => {
     sdk.actions.ready().catch(console.error);
@@ -28,28 +29,76 @@ export default function SubmitPage() {
 
   const handleUseCurrentLocation = async () => {
     if (!navigator.geolocation) {
-      setGeoMessage("Geolocation is not supported on this device.");
+      setGeoMessage(
+        "Geolocation is not supported in this context. You can still use the city text field."
+      );
       return;
     }
 
+    setGeoLoading(true);
     setGeoMessage("Detecting current location...");
 
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setLatitude(position.coords.latitude);
-        setLongitude(position.coords.longitude);
-        setGeoMessage("Current coordinates saved successfully.");
-      },
-      (error) => {
-        console.error("Geolocation error:", error);
-        setGeoMessage("Could not retrieve current location.");
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 12000,
-        maximumAge: 60000,
+    try {
+      if ("permissions" in navigator && navigator.permissions?.query) {
+        try {
+          const permission = await navigator.permissions.query({
+            name: "geolocation" as PermissionName,
+          });
+
+          if (permission.state === "denied") {
+            setGeoMessage(
+              "Location permission is denied in this context. You can still continue using the city text field."
+            );
+            setGeoLoading(false);
+            return;
+          }
+        } catch (permError) {
+          console.error("Permissions API check failed:", permError);
+        }
       }
-    );
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setLatitude(position.coords.latitude);
+          setLongitude(position.coords.longitude);
+          setGeoMessage(
+            "Current coordinates saved successfully. Distance-based matching can now be used."
+          );
+          setGeoLoading(false);
+        },
+        (error) => {
+          console.error("Geolocation error:", error);
+
+          let nextMessage =
+            "Could not retrieve current location in this app context. City-based fallback will still work.";
+
+          if (error.code === error.PERMISSION_DENIED) {
+            nextMessage =
+              "Location permission was denied. City-based fallback will still work.";
+          } else if (error.code === error.POSITION_UNAVAILABLE) {
+            nextMessage =
+              "Current location is unavailable right now. City-based fallback will still work.";
+          } else if (error.code === error.TIMEOUT) {
+            nextMessage =
+              "Location request timed out. City-based fallback will still work.";
+          }
+
+          setGeoMessage(nextMessage);
+          setGeoLoading(false);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 12000,
+          maximumAge: 60000,
+        }
+      );
+    } catch (err) {
+      console.error("Unexpected geolocation error:", err);
+      setGeoMessage(
+        "Could not access precise location here. You can still submit using the city text field."
+      );
+      setGeoLoading(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -236,10 +285,15 @@ export default function SubmitPage() {
                 <button
                   type="button"
                   onClick={handleUseCurrentLocation}
-                  className="w-full rounded-2xl border border-zinc-300 bg-white px-4 py-3 text-sm font-medium text-zinc-900 transition hover:bg-zinc-50"
+                  disabled={geoLoading}
+                  className="w-full rounded-2xl border border-zinc-300 bg-white px-4 py-3 text-sm font-medium text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Use current location
+                  {geoLoading ? "Detecting location..." : "Use current location"}
                 </button>
+
+                <p className="text-sm text-zinc-500">
+                  If precise coordinates are unavailable, AIdCast will fall back to city-based matching.
+                </p>
 
                 {geoMessage && (
                   <p className="text-sm text-zinc-600">{geoMessage}</p>

@@ -24,9 +24,6 @@ type Entry = {
   selected_for_request_id?: number | null;
 };
 
-//const OFFER_TTL_HOURS = 48;
-const OFFER_TTL_HOURS = 0.02;
-
 function formatDate(value: string) {
   try {
     return new Date(value).toLocaleString("en-GB");
@@ -37,17 +34,6 @@ function formatDate(value: string) {
 
 function normalizedStatus(status: string | null | undefined) {
   return status ?? "open";
-}
-
-function isExpiredOffer(entry: Entry) {
-  if (entry.type !== "offer") return false;
-  if (!entry.created_at) return false;
-
-  const createdAt = new Date(entry.created_at).getTime();
-  const now = Date.now();
-  const ageHours = (now - createdAt) / (1000 * 60 * 60);
-
-  return ageHours > OFFER_TTL_HOURS;
 }
 
 function typeBadgeClass(type: Entry["type"]) {
@@ -116,11 +102,9 @@ export default function BoardPage() {
       const json = await res.json();
       const fetchedEntries = (json?.entries || []) as Entry[];
 
-      const visibleEntries = fetchedEntries.filter((entry) => {
-        if (normalizedStatus(entry.status) !== "open") return false;
-        if (entry.type === "offer" && isExpiredOffer(entry)) return false;
-        return true;
-      });
+      const visibleEntries = fetchedEntries.filter(
+        (entry) => normalizedStatus(entry.status) === "open"
+      );
 
       const requestEntries = visibleEntries.filter(
         (e) => e.type === "request"
@@ -128,7 +112,7 @@ export default function BoardPage() {
 
       const settled = await Promise.allSettled(
         requestEntries.map(async (request) => {
-          const matches = await findMatchesForRequest(request, 3);
+          const matches = await findMatchesForRequest(request, 1);
           return { requestId: request.id, matches };
         })
       );
@@ -137,7 +121,7 @@ export default function BoardPage() {
 
       for (const result of settled) {
         if (result.status === "fulfilled") {
-          nextMatchesMap[result.value.requestId] = result.value.matches;
+          nextMatchesMap[result.value.requestId] = result.value.matches.slice(0, 1);
         } else {
           console.error("Board match computation error:", result.reason);
         }
@@ -346,7 +330,7 @@ export default function BoardPage() {
                     {entry.type === "request" && hasMatches && (
                       <div className="space-y-3 border-t border-black/10 pt-4">
                         <h3 className="text-sm font-semibold text-zinc-900">
-                          Best matches
+                          Best match
                         </h3>
 
                         <div className="space-y-3">

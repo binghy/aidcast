@@ -88,10 +88,9 @@ export async function POST(req: NextRequest) {
         };
       })
       .filter(Boolean)
-      .sort((a, b) => b!.matchScore - a!.matchScore)
-      .slice(0, 3);
+      .sort((a, b) => b!.matchScore - a!.matchScore);
 
-    const bestMatch = scoredMatches[0];
+    const bestMatch = scoredMatches[0] || null;
 
     if (bestMatch) {
       const { error: upsertError } = await supabase
@@ -119,7 +118,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       requestId,
-      matches: scoredMatches,
+      matches: bestMatch ? [bestMatch] : [],
     });
   } catch (error) {
     console.error("Match route unexpected error:", error);

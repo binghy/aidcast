@@ -1,217 +1,156 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import {
-  ParseWebhookEvent,
   parseWebhookEvent,
   verifyAppKeyWithNeynar,
 } from "@farcaster/miniapp-node";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+// const neynarApiKey = process.env.NEYNAR_API_KEY!;
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
-export async function POST(request: NextRequest) {
-  const requestJson = await request.json();
+type NotificationDetails = {
+  token?: string;
+  url?: string;
+};
 
-  console.log("Webhook raw envelope:", JSON.stringify(requestJson, null, 2));
+function getObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : null;
+}
 
-  let data: Awaited<ReturnType<typeof parseWebhookEvent>>;
+function getNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
 
-  try {
-    data = await parseWebhookEvent(requestJson, verifyAppKeyWithNeynar);
-  } catch (e: unknown) {
-    const error = e as ParseWebhookEvent.ErrorType;
-    console.error("Webhook verification error:", error);
+function getString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
 
-    switch (error.name) {
-      case "VerifyJsonFarcasterSignature.InvalidDataError":
-      case "VerifyJsonFarcasterSignature.InvalidEventDataError":
-        return NextResponse.json(
-          { success: false, error: error.message },
-          { status: 400 }
-        );
+function extractFid(data: unknown): number | null {
+  const root = getObject(data);
+  if (!root) return null;
 
-      case "VerifyJsonFarcasterSignature.InvalidAppKeyError":
-        return NextResponse.json(
-          { success: false, error: error.message },
-          { status: 401 }
-        );
+  const rootFid = getNumber(root["fid"]);
+  if (rootFid !== null) return rootFid;
 
-      case "VerifyJsonFarcasterSignature.VerifyAppKeyError":
-        return NextResponse.json(
-          { success: false, error: error.message },
-          { status: 500 }
-        );
+  const user = getObject(root["user"]);
+  const userFid = getNumber(user?.["fid"]);
+  if (userFid !== null) return userFid;
 
-      default:
-        return NextResponse.json(
-          { success: false, error: "Unknown webhook verification error" },
-          { status: 500 }
-        );
-    }
+  const eventObj = getObject(root["event"]);
+  const eventFid = getNumber(eventObj?.["fid"]);
+  if (eventFid !== null) return eventFid;
+
+  return null;
+}
+
+function extractEventName(data: unknown): string | null {
+  const root = getObject(data);
+  if (!root) return null;
+
+  const directEvent = getString(root["event"]);
+  if (directEvent) return directEvent;
+
+  const eventObj = getObject(root["event"]);
+  const nestedEvent = getString(eventObj?.["event"]);
+  if (nestedEvent) return nestedEvent;
+
+  return null;
+}
+
+function extractNotificationDetails(data: unknown): NotificationDetails | null {
+  const root = getObject(data);
+  if (!root) return null;
+
+  const direct = getObject(root["notificationDetails"]);
+  const directToken = getString(direct?.["token"]);
+  const directUrl = getString(direct?.["url"]);
+
+  if (directToken || directUrl) {
+    return {
+      token: directToken ?? undefined,
+      url: directUrl ?? undefined,
+    };
   }
 
-  console.log("Verified webhook event:", JSON.stringify(data, null, 2));
+  const eventObj = getObject(root["event"]);
+  const nested = getObject(eventObj?.["notificationDetails"]);
+  const nestedToken = getString(nested?.["token"]);
+  const nestedUrl = getString(nested?.["url"]);
 
-  const fid = data.fid;
-  const event = data.event;
+  if (nestedToken || nestedUrl) {
+    return {
+      token: nestedToken ?? undefined,
+      url: nestedUrl ?? undefined,
+    };
+  }
 
-  console.log("Verified fid:", fid);
-  console.log("Verified event name:", event.event);
+  return null;
+}
 
-  switch (event.event) {
-    case "miniapp_added": {
-      if (event.notificationDetails) {
-        console.log("Saving notification details:", event.notificationDetails);
+export async function POST(req: NextRequest) {
+  try {
+    const requestJson = await req.json();
 
-        const { data: existing, error: selectError } = await supabase
-          .from("notification_subscriptions")
-          .select("id")
-          .eq("fid", fid)
-          .eq("notification_token", event.notificationDetails.token)
-          .maybeSingle();
+    console.log("Webhook raw envelope:", JSON.stringify(requestJson, null, 2));
 
-        if (selectError) {
-          console.error("Webhook select error:", selectError);
-          return NextResponse.json(
-            { success: false, error: selectError.message },
-            { status: 400 }
-          );
-        }
+    const verified = await parseWebhookEvent(
+      requestJson,
+      verifyAppKeyWithNeynar
+    );
 
-        if (existing?.id) {
-          const { error: updateError } = await supabase
-            .from("notification_subscriptions")
-            .update({
-              notification_url: event.notificationDetails.url,
-              is_active: true,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", existing.id);
+    console.log("Verified webhook event:", JSON.stringify(verified, null, 2));
 
-          if (updateError) {
-            console.error("Webhook update error:", updateError);
-            return NextResponse.json(
-              { success: false, error: updateError.message },
-              { status: 400 }
-            );
-          }
-        } else {
-          const { error: insertError } = await supabase
-            .from("notification_subscriptions")
-            .insert([
-              {
-                fid,
-                notification_token: event.notificationDetails.token,
-                notification_url: event.notificationDetails.url,
-                is_active: true,
-                updated_at: new Date().toISOString(),
-              },
-            ]);
+    const fid = extractFid(verified);
+    const eventName = extractEventName(verified);
+    const notificationDetails = extractNotificationDetails(verified);
 
-          if (insertError) {
-            console.error("Webhook insert error:", insertError);
-            return NextResponse.json(
-              { success: false, error: insertError.message },
-              { status: 400 }
-            );
-          }
-        }
-      } else {
-        // App aggiunta ma senza notifiche abilitate/token disponibile
-        const { error: disableError } = await supabase
-          .from("notification_subscriptions")
-          .update({
-            is_active: false,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("fid", fid);
+    console.log("Verified fid:", fid);
+    console.log("Verified event name:", eventName);
+    console.log("Webhook notificationDetails:", notificationDetails);
 
-        if (disableError) {
-          console.error("Webhook disable-on-add error:", disableError);
-        }
-      }
-
-      break;
+    if (!fid || !eventName) {
+      return NextResponse.json({
+        ok: true,
+        ignored: true,
+        reason: "Missing fid or event name",
+      });
     }
 
-    case "miniapp_removed": {
-      const { error: disableError } = await supabase
-        .from("notification_subscriptions")
-        .update({
-          is_active: false,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("fid", fid);
-
-      if (disableError) {
-        console.error("Webhook disable error:", disableError);
-      }
-
-      break;
-    }
-
-    case "notifications_enabled": {
-      const { data: existing, error: selectError } = await supabase
-        .from("notification_subscriptions")
-        .select("id")
-        .eq("fid", fid)
-        .eq("notification_token", event.notificationDetails.token)
-        .maybeSingle();
-
-      if (selectError) {
-        console.error("Webhook select error:", selectError);
-        return NextResponse.json(
-          { success: false, error: selectError.message },
-          { status: 400 }
-        );
-      }
-
-      if (existing?.id) {
-        const { error: updateError } = await supabase
+    if (eventName === "miniapp_added" || eventName === "frame_added") {
+      if (notificationDetails?.token && notificationDetails?.url) {
+        const { error } = await supabase
           .from("notification_subscriptions")
-          .update({
-            notification_url: event.notificationDetails.url,
-            is_active: true,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", existing.id);
-
-        if (updateError) {
-          console.error("Webhook update error:", updateError);
-          return NextResponse.json(
-            { success: false, error: updateError.message },
-            { status: 400 }
-          );
-        }
-      } else {
-        const { error: insertError } = await supabase
-          .from("notification_subscriptions")
-          .insert([
+          .upsert(
             {
               fid,
-              notification_token: event.notificationDetails.token,
-              notification_url: event.notificationDetails.url,
+              notification_token: notificationDetails.token,
+              notification_url: notificationDetails.url,
+              client: "farcaster",
               is_active: true,
               updated_at: new Date().toISOString(),
             },
-          ]);
+            { onConflict: "fid" }
+          );
 
-        if (insertError) {
-          console.error("Webhook insert error:", insertError);
+        if (error) {
+          console.error("Webhook insert error:", error);
           return NextResponse.json(
-            { success: false, error: insertError.message },
-            { status: 400 }
+            { error: error.message },
+            { status: 500 }
           );
         }
+      } else {
+        console.log("No notificationDetails present on add event");
       }
-
-      break;
     }
 
-    case "notifications_disabled": {
-      const { error: disableError } = await supabase
+    if (eventName === "miniapp_removed" || eventName === "frame_removed") {
+      const { error } = await supabase
         .from("notification_subscriptions")
         .update({
           is_active: false,
@@ -219,13 +158,21 @@ export async function POST(request: NextRequest) {
         })
         .eq("fid", fid);
 
-      if (disableError) {
-        console.error("Webhook disable error:", disableError);
+      if (error) {
+        console.error("Webhook deactivate error:", error);
+        return NextResponse.json(
+          { error: error.message },
+          { status: 500 }
+        );
       }
-
-      break;
     }
-  }
 
-  return NextResponse.json({ success: true });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("Webhook route unexpected error:", error);
+    return NextResponse.json(
+      { error: "Unexpected webhook error" },
+      { status: 500 }
+    );
+  }
 }

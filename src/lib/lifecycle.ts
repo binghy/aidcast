@@ -48,7 +48,7 @@ export async function cleanupLifecycleState() {
     }
   }
 
-  // 2) get open requests after auto-close
+  // 2) fetch current open requests
   const { data: openRequests, error: openRequestsError } = await supabase
     .from("entries")
     .select("id")
@@ -92,7 +92,7 @@ export async function cleanupLifecycleState() {
     }
   }
 
-  // 4) recompute locked offer ids from current valid request_match_state
+  // 4) recompute locked offers = best current offers for open requests
   const { data: validMatchStates, error: validMatchStatesError } = await supabase
     .from("request_match_state")
     .select("request_id, best_match_entry_id");
@@ -114,7 +114,7 @@ export async function cleanupLifecycleState() {
     )
   );
 
-  // 5) delete expired open offers that are NOT locked
+  // 5) delete expired offers that are open and NOT locked
   const { data: oldOpenOffers, error: oldOpenOffersError } = await supabase
     .from("entries")
     .select("id")

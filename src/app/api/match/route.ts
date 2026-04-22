@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { evaluateOfferForRequest, EntryLike } from "@/lib/match-engine";
+import { recomputeMatchNotifications } from "@/lib/recompute-match-notifications";
 import { cleanupLifecycleState } from "@/lib/lifecycle";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -115,6 +116,10 @@ export async function POST(req: NextRequest) {
         .delete()
         .eq("request_id", requestId);
     }
+
+    await recomputeMatchNotifications({
+      onlyCategory: requestEntry.category ?? null,
+    });
 
     return NextResponse.json({
       requestId,

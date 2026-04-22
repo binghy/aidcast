@@ -3,9 +3,9 @@ import { sendNotificationToFid } from "@/lib/notifications";
 import { evaluateOfferForRequest } from "@/lib/match-engine";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
 export async function recomputeMatchNotifications(params?: {
   onlyCategory?: string | null;
@@ -98,7 +98,10 @@ export async function recomputeMatchNotifications(params?: {
         ]);
 
       if (insertStateError) {
-        console.error("recomputeMatchNotifications insert state error:", insertStateError);
+        console.error(
+          "recomputeMatchNotifications insert state error:",
+          insertStateError
+        );
       }
 
       continue;
@@ -124,7 +127,10 @@ export async function recomputeMatchNotifications(params?: {
         .eq("request_id", request.id);
 
       if (updateStateError) {
-        console.error("recomputeMatchNotifications update state error:", updateStateError);
+        console.error(
+          "recomputeMatchNotifications update state error:",
+          updateStateError
+        );
       }
     }
   }

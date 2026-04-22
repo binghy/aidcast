@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { evaluateOfferForRequest, EntryLike } from "@/lib/match-engine";
+import { cleanupLifecycleState } from "@/lib/lifecycle";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -14,22 +15,10 @@ type DbEntry = EntryLike & {
   created_at?: string | null;
 };
 
-//const OFFER_TTL_HOURS = 48;
-const OFFER_TTL_HOURS = 0.02;
-
-function isExpiredOffer(entry: { type: string; created_at?: string | null }) {
-  if (entry.type !== "offer") return false;
-  if (!entry.created_at) return false;
-
-  const createdAt = new Date(entry.created_at).getTime();
-  const now = Date.now();
-  const ageHours = (now - createdAt) / (1000 * 60 * 60);
-
-  return ageHours > OFFER_TTL_HOURS;
-}
-
 export async function POST(req: NextRequest) {
   try {
+    await cleanupLifecycleState();
+
     const { requestId } = await req.json();
 
     if (!requestId || typeof requestId !== "number") {
@@ -56,7 +45,10 @@ export async function POST(req: NextRequest) {
     const requestStatus = requestEntry.status ?? "open";
 
     if (requestEntry.type !== "request" || requestStatus !== "open") {
-      await supabase.from("request_match_state").delete().eq("request_id", requestId);
+      await supabase
+        .from("request_match_state")
+        .delete()
+        .eq("request_id", requestId);
 
       return NextResponse.json({
         requestId,
@@ -68,6 +60,7 @@ export async function POST(req: NextRequest) {
       .from("entries")
       .select("*")
       .eq("type", "offer")
+      .eq("status", "open")
       .order("created_at", { ascending: false });
 
     if (offersError) {
@@ -79,8 +72,6 @@ export async function POST(req: NextRequest) {
     }
 
     const scoredMatches = (offers || [])
-      .filter((offer) => (offer.status ?? "open") === "open")
-      .filter((offer) => !isExpiredOffer(offer))
       .map((offer) => {
         const evaluation = evaluateOfferForRequest(
           requestEntry,
@@ -103,18 +94,27 @@ export async function POST(req: NextRequest) {
     const bestMatch = scoredMatches[0];
 
     if (bestMatch) {
-      await supabase.from("request_match_state").upsert(
-        {
-          request_id: requestEntry.id,
-          fid: requestEntry.fid ?? null,
-          best_match_entry_id: bestMatch.id,
-          best_score: bestMatch.matchScore,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "request_id" }
-      );
+      const { error: upsertError } = await supabase
+        .from("request_match_state")
+        .upsert(
+          {
+            request_id: requestEntry.id,
+            fid: requestEntry.fid ?? null,
+            best_match_entry_id: bestMatch.id,
+            best_score: bestMatch.matchScore,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "request_id" }
+        );
+
+      if (upsertError) {
+        console.error("Match route upsert state error:", upsertError);
+      }
     } else {
-      await supabase.from("request_match_state").delete().eq("request_id", requestId);
+      await supabase
+        .from("request_match_state")
+        .delete()
+        .eq("request_id", requestId);
     }
 
     return NextResponse.json({

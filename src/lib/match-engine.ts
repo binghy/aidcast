@@ -2,14 +2,13 @@ export type EntryLike = {
   id: number;
   fid?: number | null;
   username?: string | null;
-  display_name?: string | null;
   type: "request" | "offer";
   raw_text: string;
   category: string | null;
   priority?: string | null;
   summary?: string | null;
   status?: string | null;
-  created_at?: string;
+  created_at?: string | null;
   support_mode?: "online" | "in_person" | "both" | null;
   location_text?: string | null;
 };
@@ -18,18 +17,6 @@ export type MatchEvaluation = {
   isMatch: boolean;
   score: number;
   reason: string;
-  breakdown: {
-    category: number;
-    textOverlap: number;
-    requestPriority: number;
-    offerUrgency: number;
-    recency: number;
-    location: number;
-    supportMode: number;
-    intent: number;
-    economicAdvantage: number;
-    specificity: number;
-  };
 };
 
 const STOPWORDS = new Set([
@@ -186,8 +173,8 @@ function inferIntent(text: string) {
     t.includes("give") ||
     t.includes("provide") ||
     t.includes("give away") ||
-    t.includes("offered for free") ||
-    t.includes("free offered")
+    t.includes("donate") ||
+    t.includes("free")
   ) {
     return "give";
   }
@@ -315,7 +302,7 @@ function locationCompatibility(request: EntryLike, offer: EntryLike) {
 
     return {
       isCompatible: true,
-      score: 12,
+      score: 14,
       reason: `same city: ${requestCity}`,
     };
   }
@@ -343,12 +330,15 @@ function getIntentScore(
   const kind = categoryKind(request.category);
 
   if (kind === "object") {
-    if (
-      (requestIntent === "loan" && offerIntent === "loan") ||
-      (requestIntent === "loan" && offerIntent === "give") ||
-      (requestIntent === "give" && offerIntent === "loan") ||
-      (requestIntent === "give" && offerIntent === "give")
-    ) {
+    if (requestIntent === "loan" && offerIntent === "loan") {
+      return 8;
+    }
+
+    if (requestIntent === "loan" && offerIntent === "give") {
+      return 6;
+    }
+
+    if (requestIntent === "give" && offerIntent === "give") {
       return 8;
     }
 
@@ -407,7 +397,8 @@ function offerLooksFreeOrEconomical(text: string) {
     t.includes("without payment") ||
     t.includes("no fee") ||
     t.includes("give away") ||
-    t.includes("you can keep it")
+    t.includes("donate") ||
+    t.includes("donation")
   ) {
     return "explicit_free";
   }
@@ -434,11 +425,11 @@ function getEconomicAdvantageScore(
 
   if (kind === "object") {
     if (offerEconomicSignal === "explicit_free") {
-      return 14;
+      return 22;
     }
 
     if (requestIntent === "loan" && offerIntent === "give") {
-      return 8;
+      return 12;
     }
 
     if (requestWillingToPay && offerEconomicSignal === "implicit_economical") {
@@ -449,7 +440,7 @@ function getEconomicAdvantageScore(
   }
 
   if (requestWillingToPay && offerEconomicSignal === "explicit_free") {
-    return 8;
+    return 10;
   }
 
   return 0;
@@ -466,8 +457,8 @@ function getSpecificityScore(request: EntryLike, offer: EntryLike) {
   const kind = categoryKind(request.category);
 
   if (kind === "object") {
-    if (commonWords.length >= 3) return 10;
-    if (commonWords.length === 2) return 7;
+    if (commonWords.length >= 3) return 12;
+    if (commonWords.length === 2) return 8;
     if (commonWords.length === 1) return 4;
     return 0;
   }
@@ -488,18 +479,6 @@ export function evaluateOfferForRequest(
       isMatch: false,
       score: 0,
       reason: "different category",
-      breakdown: {
-        category: 0,
-        textOverlap: 0,
-        requestPriority: 0,
-        offerUrgency: 0,
-        recency: 0,
-        location: 0,
-        supportMode: 0,
-        intent: 0,
-        economicAdvantage: 0,
-        specificity: 0,
-      },
     };
   }
 
@@ -509,18 +488,6 @@ export function evaluateOfferForRequest(
       isMatch: false,
       score: 0,
       reason: support.reason,
-      breakdown: {
-        category: 20,
-        textOverlap: 0,
-        requestPriority: 0,
-        offerUrgency: 0,
-        recency: 0,
-        location: 0,
-        supportMode: 0,
-        intent: 0,
-        economicAdvantage: 0,
-        specificity: 0,
-      },
     };
   }
 
@@ -530,18 +497,6 @@ export function evaluateOfferForRequest(
       isMatch: false,
       score: 0,
       reason: location.reason,
-      breakdown: {
-        category: 20,
-        textOverlap: 0,
-        requestPriority: 0,
-        offerUrgency: 0,
-        recency: 0,
-        location: 0,
-        supportMode: support.score,
-        intent: 0,
-        economicAdvantage: 0,
-        specificity: 0,
-      },
     };
   }
 
@@ -583,7 +538,6 @@ export function evaluateOfferForRequest(
 
   const reasons = [
     "same category",
-    requestIntent === offerIntent ? `same intent: ${requestIntent}` : null,
     economicAdvantageScore > 0 ? "economically advantageous for requester" : null,
     specificityScore > 0 ? "specific offer/request overlap" : null,
     commonWords.length > 0 ? `shared words: ${commonWords.slice(0, 4).join(", ")}` : null,
@@ -598,17 +552,5 @@ export function evaluateOfferForRequest(
     isMatch: true,
     score: Math.min(score, 100),
     reason: reasons.join(" • "),
-    breakdown: {
-      category: categoryScore,
-      textOverlap: textOverlapScore,
-      requestPriority: requestPriorityScore,
-      offerUrgency: offerUrgencyScore,
-      recency: recencyScore,
-      location: location.score,
-      supportMode: support.score,
-      intent: intentScore,
-      economicAdvantage: economicAdvantageScore,
-      specificity: specificityScore,
-    },
   };
 }

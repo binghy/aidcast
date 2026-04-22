@@ -7,7 +7,6 @@ import {
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-// const neynarApiKey = process.env.NEYNAR_API_KEY!;
 
 const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
@@ -121,7 +120,13 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    if (eventName === "miniapp_added" || eventName === "frame_added") {
+    // ATTIVA subscription quando l'app viene aggiunta
+    // oppure quando le notifiche vengono abilitate
+    if (
+      eventName === "miniapp_added" ||
+      eventName === "frame_added" ||
+      eventName === "notifications_enabled"
+    ) {
       if (notificationDetails?.token && notificationDetails?.url) {
         const { error } = await supabase
           .from("notification_subscriptions")
@@ -145,11 +150,12 @@ export async function POST(req: NextRequest) {
           );
         }
       } else {
-        console.log("No notificationDetails present on add event");
+        console.log("No notificationDetails present on enabling/add event");
       }
     }
 
-    if (eventName === "miniapp_removed" || eventName === "frame_removed") {
+    // DISATTIVA SOLO su eventi davvero di disable
+    if (eventName === "notifications_disabled") {
       const { error } = await supabase
         .from("notification_subscriptions")
         .update({
@@ -165,6 +171,12 @@ export async function POST(req: NextRequest) {
           { status: 500 }
         );
       }
+    }
+
+    // Per ora NON disattiviamo su miniapp_removed/frame_removed,
+    // perché nel tuo flusso stanno causando false negative.
+    if (eventName === "miniapp_removed" || eventName === "frame_removed") {
+      console.log(`Ignoring ${eventName} for notification activation state`);
     }
 
     return NextResponse.json({ ok: true });
